@@ -106,8 +106,8 @@ def log_likelihood(theta, param_dict, time, observations,
         dat = observations[inst]['flux']
         t = time[inst]
         err = param_dict['sigma_{}'.format(inst)]['value']
-        log_like -= 0.5 * np.log(2 * np.pi * err ** 2) * len(t)
-        log_like -= 0.5 * np.sum((dat - mod) ** 2 / err ** 2)
+        log_like -= 0.5 * np.log(2 * np.pi * err**2) * len(t)
+        log_like -= 0.5 * np.sum((dat - mod)**2 / err**2)
 
     return log_like
 

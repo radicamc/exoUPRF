@@ -9,6 +9,8 @@ Stuff.
 """
 
 import batman
+import celerite
+from celerite import terms
 import numpy as np
 
 
@@ -26,6 +28,7 @@ class Model:
         self.linear_regressors = linear_regressors
         self.gp_regressors = gp_regressors
         self.silent = silent
+        self.gp_kernel = None
 
         # Go through input params once to get number of different instruments.
         self.multiplicity = {}
@@ -37,6 +40,9 @@ class Model:
             for chunk in param_split[1:]:
                 # Ignore planet identifiers.
                 if chunk[0] == 'p' and chunk[1].isdigit():
+                    pass
+                # Ignore GP parameters.
+                elif param[:2] == 'GP':
                     pass
                 # If it is a new instrument, add to list.
                 elif chunk not in self.multiplicity.keys():
@@ -95,6 +101,12 @@ class Model:
                 for inst in self.multiplicity.keys():
                     if inst in param_split:
                         self.pl_params[inst][prop] = input_parameters[param]['value']
+            # GP systematics -- property of instrument.
+            elif prop == 'GP':
+                for inst in self.multiplicity.keys():
+                    if inst in param_split:
+                        thisprop = param_split[0] + '_' + param_split[1]
+                        self.pl_params[inst][thisprop] = input_parameters[param]['value']
             else:
                 msg = 'Unrecognized input parameter: {}'.format(param)
                 raise ValueError(msg)
@@ -112,8 +124,9 @@ class Model:
             self.flux_decomposed[inst] = {}
             self.flux_decomposed[inst]['pl'] = {}
             self.flux[inst] = np.ones_like(self.t[inst])
-            lm, gp = False, False
+            use_lm, use_gp = False, False
 
+            # === Astrophysical Model ===
             # Generate astrophysical light curve for each planet.
             for pl in self.multiplicity[inst]:
                 ld_params = []
@@ -128,12 +141,12 @@ class Model:
                                          self.pl_params[inst][pl]['inc'],
                                          self.pl_params[inst][pl]['ecc'],
                                          self.pl_params[inst][pl]['w'],
-                                         ld_params,
-                                         ld_model=self.ld_model)
+                                         ld_params, ld_model=self.ld_model)
                 self.flux_decomposed[inst]['pl'][pl] = pl_flux
                 self.flux[inst] -= (1 - pl_flux)
             self.flux_decomposed[inst]['pl']['total'] = np.copy(self.flux[inst])
 
+            # === Linear Models ===
             # Add in linear systematics model, if any.
             self.flux_decomposed[inst]['lm'] = None
             # Unpack multipliers.
@@ -144,9 +157,9 @@ class Model:
                     assert inst in self.linear_regressors.keys(), msg
                     thetas.append(self.pl_params[inst][param])
                     # Note that we want to add linear models.
-                    lm = True
+                    use_lm = True
 
-            if lm is True:
+            if use_lm is True:
                 if not self.silent:
                     print('Linear model(s) detected for instrument '
                           '{}.'.format(inst))
@@ -164,6 +177,57 @@ class Model:
                     self.flux_decomposed[inst]['lm']['total'] += thismodel
 
                 self.flux[inst] += self.flux_decomposed[inst]['lm']['total']
+
+            # === GP Models ===
+            # Add in GP systematics model, if any.
+            self.flux_decomposed[inst]['gp'] = None
+            gp_params = []
+            for param in self.pl_params[inst].keys():
+                # Note if a GP is to be used.
+                if param[:2] == 'GP':
+                    gp_params.append(param)
+                    use_gp = True
+                    if self.gp_regressors is None or inst not in self.gp_regressors.keys():
+                        msg = 'GP parameters provided for instrument {}, ' \
+                              'but no regressors.'.format(inst)
+                        raise ValueError(msg)
+
+            gp_kernels = {'SHO': ['GP_ag', 'GP_bg', 'GP_Q']}
+            if use_gp is True:
+                # Ensure observations are passed for this instrument.
+                if self.observations is None or self.observations[inst] is None:
+                    msg = 'Observations must be passed for instrument {} to ' \
+                          'use a GP.'.format(inst)
+                    raise ValueError(msg)
+                self.flux_decomposed[inst]['gp'] = {}
+                # Identify GP kernel to use (if any).
+                for kernel in gp_kernels.keys():
+                    if np.all(np.sort(gp_kernels[kernel]) == np.sort(gp_params)):
+                        self.gp_kernel = kernel
+                        if not self.silent:
+                            print('GP kernel {} identified.'.format(kernel))
+                if self.gp_kernel is None:
+                    msg = 'No recognized GP kernel with parameters ' \
+                          '{}.'.format(gp_params)
+                    raise ValueError(msg)
+
+                # Calculate GP model.
+                if self.gp_kernel == 'SHO':
+                    # Convert from granulation parameters to SHO parameters.
+                    omega = 2 * np.pi * self.pl_params[inst]['GP_bg']
+                    S0 = 2 * self.pl_params[inst]['GP_ag']**2 / self.pl_params[inst]['GP_bg']
+                    Q = self.pl_params[inst]['GP_Q']
+                    err = self.pl_params[inst]['sigma']
+                    kernel = terms.SHOTerm(log_S0=np.log(S0),
+                                           log_omega0=np.log(omega),
+                                           log_Q=np.log(Q))
+                    gp = celerite.GP(kernel, mean=0)
+                    gp.compute(self.t[inst], err)
+                    thismodel = gp.predict(self.observations[inst]['flux'] - self.flux[inst], self.t[inst],
+                                           return_cov=False, return_var=False)
+
+                self.flux_decomposed[inst]['gp']['total'] = thismodel
+                self.flux[inst] += self.flux_decomposed[inst]['gp']['total']
 
             self.flux_decomposed[inst]['total'] = self.flux[inst]
 
