@@ -13,23 +13,58 @@ import celerite
 from celerite import terms
 import numpy as np
 
-
+# TODO: Kipping limb darkening
+# TODO: Eclipse model
+# TODO: Nested sampling
+# TODO: Sampler output saving
+# TODO: Sampler output reading
 class Model:
+    """Class to create a light curve model.
+    """
 
     def __init__(self, input_parameters, t, linear_regressors=None,
                  observations=None, gp_regressors=None, ld_model='quadratic',
                  silent=False):
+        """Initialize the Model class.
 
+        Parameters
+        ----------
+        input_parameters : dict
+            Dictionary of input parameters and values. Should have form
+            {parameter: value}.
+        t : dict
+            Dictionary of timestamps for each instrument. Should have form
+            {instrument: times}.
+        linear_regressors : dict
+            Dictionary of regressors for linear models. Should have form
+            {instrument: regressors}.
+        observations : dict
+            Dictionary of observed data. Should have form
+            {instrument: {flux: values, flux_err: values}}
+        gp_regressors : dict
+            Dictionary of regressors for Gaussian Process models. Should have
+            form {instrument: regressors}.
+        ld_model : str
+            Limb darkening model identifier
+        silent : bool
+            If True, do not print any outputs.
+        """
+
+        # Initialize easy attributes.
         self.t = t
         self.ld_model = ld_model
-        self.flux_decomposed = None
-        self.flux = None
         self.observations = observations
         self.linear_regressors = linear_regressors
         self.gp_regressors = gp_regressors
         self.silent = silent
+        self.flux_decomposed = None
+        self.flux = None
         self.gp_kernel = None
+        self.flux_decomposed = {}
+        self.flux = {}
 
+        # Unpack the input parameter dictionary into a form more amenable to
+        # create models.
         # Go through input params once to get number of different instruments.
         self.multiplicity = {}
         for param in input_parameters.keys():
@@ -82,17 +117,8 @@ class Model:
             param_split = param.split('_')
             # First chunk is always parameter key.
             prop = param_split[0]
-            # Keys for physical planet parameters.
-            if prop in ['per', 't0', 'rp', 'a', 'inc', 'u1', 'u2', 'u3', 'u4',
-                        'ecc', 'w']:
-                # Add to correct instrument and planet dictionary.
-                for inst in self.multiplicity.keys():
-                    if inst in param_split:
-                        for pl in self.multiplicity[inst]:
-                            if pl in param_split:
-                                self.pl_params[inst][pl][prop] = input_parameters[param]['value']
             # Error inflation parameter -- property of instrument.
-            elif prop == 'sigma':
+            if prop == 'sigma':
                 for inst in self.multiplicity.keys():
                     if inst in param_split:
                         self.pl_params[inst][prop] = input_parameters[param]['value']
@@ -107,32 +133,72 @@ class Model:
                     if inst in param_split:
                         thisprop = param_split[0] + '_' + param_split[1]
                         self.pl_params[inst][thisprop] = input_parameters[param]['value']
+            # Assume everything else is an astrophysical parameter.
             else:
-                msg = 'Unrecognized input parameter: {}'.format(param)
-                raise ValueError(msg)
+                # Add to correct instrument and planet dictionary.
+                for inst in self.multiplicity.keys():
+                    if inst in param_split:
+                        for pl in self.multiplicity[inst]:
+                            if pl in param_split:
+                                self.pl_params[inst][pl][prop] = input_parameters[param]['value']
+
+        # Convert timestamps to float64 -- avoids issue with batman.
+        for inst in self.t.keys():
+            self.t[inst] = self.t[inst].astype(np.float64)
 
     def compute_lightcurves(self):
+        """Given a set of input parameters, compute a light curve model.
+        """
 
         if not self.silent:
-            print('Computing lighcturves for all instruments.')
-        self.flux_decomposed = {}
-        self.flux_decomposed = {}
-        self.flux = {}
+            print('Computing light curves for all instruments.')
 
         # Individually treat each instrument.
         for inst in self.multiplicity.keys():
+            # For each instrument, model will be decomposed into astrophysical,
+            # linear model, and GP components, and stored in a dictionary for
+            # easy interpretation.
             self.flux_decomposed[inst] = {}
             self.flux_decomposed[inst]['pl'] = {}
             self.flux[inst] = np.ones_like(self.t[inst])
             use_lm, use_gp = False, False
 
+            # Detect and format linear model and GP parameters.
+            self.flux_decomposed[inst]['lm'] = None
+            self.flux_decomposed[inst]['gp'] = None
+            # Unpack LM multipliers.
+            thetas, gp_params = [], []
+            for param in self.pl_params[inst].keys():
+                # Note if LMs are to be used.
+                if param[:5] == 'theta':
+                    # Ensure that there are appropriate regressors.
+                    if self.linear_regressors is None or inst not in self.linear_regressors.keys():
+                        msg = 'No regressors passed for instrument ' \
+                              '{}'.format(inst)
+                        raise ValueError(msg)
+                    thetas.append(self.pl_params[inst][param])
+                    use_lm = True
+                # Note if a GP is to be used.
+                elif param[:2] == 'GP':
+                    # Ensure that there are appropriate regressors.
+                    if self.gp_regressors is None or inst not in self.gp_regressors.keys():
+                        msg = 'No GP regressors passed for instrument ' \
+                              '{}'.format(inst)
+                        raise ValueError(msg)
+                    gp_params.append(param)
+                    use_gp = True
+                else:
+                    pass
+
             # === Astrophysical Model ===
             # Generate astrophysical light curve for each planet.
             for pl in self.multiplicity[inst]:
+                # Pack limb darkening parameters.
                 ld_params = []
                 for param in self.pl_params[inst][pl].keys():
                     if param in ['u1', 'u2', 'u3', 'u4']:
                         ld_params.append(self.pl_params[inst][pl][param])
+                # Calculate a basic transit model using the input parameters.
                 pl_flux = batman_transit(self.t[inst],
                                          self.pl_params[inst][pl]['t0'],
                                          self.pl_params[inst][pl]['per'],
@@ -142,23 +208,13 @@ class Model:
                                          self.pl_params[inst][pl]['ecc'],
                                          self.pl_params[inst][pl]['w'],
                                          ld_params, ld_model=self.ld_model)
+                # Store the model for each planet seperately.
                 self.flux_decomposed[inst]['pl'][pl] = pl_flux
+                # Add contribution of planet to the total astrophysical model.
                 self.flux[inst] -= (1 - pl_flux)
             self.flux_decomposed[inst]['pl']['total'] = np.copy(self.flux[inst])
 
             # === Linear Models ===
-            # Add in linear systematics model, if any.
-            self.flux_decomposed[inst]['lm'] = None
-            # Unpack multipliers.
-            thetas = []
-            for param in self.pl_params[inst].keys():
-                if param[:5] == 'theta':
-                    msg = 'No regressors passed for instrument {}'.format(inst)
-                    assert inst in self.linear_regressors.keys(), msg
-                    thetas.append(self.pl_params[inst][param])
-                    # Note that we want to add linear models.
-                    use_lm = True
-
             if use_lm is True:
                 if not self.silent:
                     print('Linear model(s) detected for instrument '
@@ -170,36 +226,29 @@ class Model:
                 msg = 'Number of linear model parameters does not match ' \
                       'number of regressors for instrument {}.'.format(inst)
                 assert np.shape(regressors)[0] == len(thetas), msg
+
                 self.flux_decomposed[inst]['lm']['total'] = np.zeros_like(regressors[0])
+                # For each LM regressor, add it to the model.
                 for i, theta in enumerate(thetas):
                     thismodel = theta * regressors[i]
                     self.flux_decomposed[inst]['lm']['regressor{}'.format(i)] = thismodel
                     self.flux_decomposed[inst]['lm']['total'] += thismodel
 
+                # Add the total LM model to the total light curve model.
                 self.flux[inst] += self.flux_decomposed[inst]['lm']['total']
 
             # === GP Models ===
-            # Add in GP systematics model, if any.
-            self.flux_decomposed[inst]['gp'] = None
-            gp_params = []
-            for param in self.pl_params[inst].keys():
-                # Note if a GP is to be used.
-                if param[:2] == 'GP':
-                    gp_params.append(param)
-                    use_gp = True
-                    if self.gp_regressors is None or inst not in self.gp_regressors.keys():
-                        msg = 'GP parameters provided for instrument {}, ' \
-                              'but no regressors.'.format(inst)
-                        raise ValueError(msg)
-
-            gp_kernels = {'SHO': ['GP_ag', 'GP_bg', 'GP_Q']}
+            # Acceptable GP kernels.
+            gp_kernels = {'SHO-gran': ['GP_ag', 'GP_bg', 'GP_Q'],
+                          'SHO': ['GP_S0', 'GP_omega0', 'GP_Q'],
+                          'Matern 3/2': ['GP_sigma', 'GP_rho']}
             if use_gp is True:
                 # Ensure observations are passed for this instrument.
                 if self.observations is None or self.observations[inst] is None:
                     msg = 'Observations must be passed for instrument {} to ' \
                           'use a GP.'.format(inst)
                     raise ValueError(msg)
-                self.flux_decomposed[inst]['gp'] = {}
+
                 # Identify GP kernel to use (if any).
                 for kernel in gp_kernels.keys():
                     if np.all(np.sort(gp_kernels[kernel]) == np.sort(gp_params)):
@@ -212,26 +261,43 @@ class Model:
                     raise ValueError(msg)
 
                 # Calculate GP model.
-                if self.gp_kernel == 'SHO':
+                self.flux_decomposed[inst]['gp'] = {}
+                # Initialize the appropriate kernel.
+                if self.gp_kernel == 'SHO-gran':
                     # Convert from granulation parameters to SHO parameters.
                     omega = 2 * np.pi * self.pl_params[inst]['GP_bg']
                     S0 = 2 * self.pl_params[inst]['GP_ag']**2 / self.pl_params[inst]['GP_bg']
                     Q = self.pl_params[inst]['GP_Q']
-                    err = self.pl_params[inst]['sigma']
                     kernel = terms.SHOTerm(log_S0=np.log(S0),
                                            log_omega0=np.log(omega),
                                            log_Q=np.log(Q))
-                    gp = celerite.GP(kernel, mean=0)
-                    gp.compute(self.t[inst], err)
-                    thismodel = gp.predict(self.observations[inst]['flux'] - self.flux[inst], self.t[inst],
-                                           return_cov=False, return_var=False)
+                elif self.gp_kernel == 'SHO':
+                    kernel = terms.SHOTerm(log_S0=np.log(self.pl_params[inst]['GP_S0']),
+                                           log_omega0=np.log(self.pl_params[inst]['GP_omega0']),
+                                           log_Q=np.log(self.pl_params[inst]['GP_Q']))
+                elif self.gp_kernel == 'Matern 3/2':
+                    kernel = terms.SHOTerm(log_sigma=np.log(self.pl_params[inst]['GP_sigma']),
+                                           log_rho=np.log(self.pl_params[inst]['GP_rho']))
+                else:
+                    raise ValueError('Bad GP kernel.')
 
+                # Use the GP to make a prediction based on the observations
+                # and current light curve model.
+                gp = celerite.GP(kernel, mean=0)
+                gp.compute(self.t[inst], self.pl_params[inst]['sigma'])
+                thismodel = gp.predict(self.observations[inst]['flux'] - self.flux[inst],
+                                       self.t[inst], return_cov=False,
+                                       return_var=False)
+                # Add GP model to light curve model.
                 self.flux_decomposed[inst]['gp']['total'] = thismodel
                 self.flux[inst] += self.flux_decomposed[inst]['gp']['total']
 
             self.flux_decomposed[inst]['total'] = self.flux[inst]
 
     def simulate_observations(self):
+        """Given a light curve model and expected scatter, simulate some fake
+        observations.
+        """
 
         # Make sure that light curves have already been calculated.
         if self.flux_decomposed is None:
@@ -260,6 +326,36 @@ class Model:
 
 
 def batman_transit(t, t0, per, rp, a, inc, ecc, w, ld, ld_model='quadratic'):
+    """Calculate a simple transit model.
+
+    Parameters
+    ----------
+    t : ndarray(float)
+        Time stamps at which to calculate the light curve.
+    t0 : float
+        Time of mid-transit.
+    per : float
+        Planet orbital period in days.
+    rp : float
+        Planet-to-star radius ratio.
+    a : float
+        Planet semi-major axis in units of stellar radii.
+    inc : float
+        Planet orbital inclination in degrees.
+    ecc : float
+        Planet orbital eccentricity.
+    w : float
+        Planet argument of periastron.
+    ld : list(float)
+        List of limb darkening parameters.
+    ld_model : str
+        BATMAN limb darkening identifier.
+
+    Returns
+    -------
+    flux : ndarray(float)
+        Model light curve.
+    """
 
     params = batman.TransitParams()
     params.t0 = t0
