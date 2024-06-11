@@ -13,11 +13,11 @@ import celerite
 from celerite import terms
 import numpy as np
 
-# TODO: Kipping limb darkening
-# TODO: Eclipse model
-# TODO: Nested sampling
-# TODO: Sampler output saving
-# TODO: Sampler output reading
+# TODO: 1. Sampler output reading
+# TODO: 2. Output plotting
+# TODO: 3. Eclipse model
+# TODO: 4. Nested sampling
+# TODO: 5. Kipping limb darkening
 class Model:
     """Class to create a light curve model.
     """
