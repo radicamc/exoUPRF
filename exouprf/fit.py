@@ -172,8 +172,9 @@ def fit_emcee(log_prob, initial_pos=None, continue_run=False, silent=False,
 
             # Add prior info.
             inputs = log_probability_args[0]
-            for param in inputs.keys():
+            for i, param in enumerate(inputs.keys()):
                 g = hf.create_group('inputs/{}'.format(param))
+                g.attrs['location'] = i
                 dt = h5py.string_dtype()
                 g.create_dataset('distribution',
                                  data=inputs[param]['distribution'], dtype=dt)

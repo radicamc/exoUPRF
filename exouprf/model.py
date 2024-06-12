@@ -11,6 +11,7 @@ Stuff.
 import batman
 import celerite
 from celerite import terms
+import h5py
 import numpy as np
 
 # TODO: 1. Sampler output reading
@@ -372,3 +373,50 @@ def batman_transit(t, t0, per, rp, a, inc, ecc, w, ld, ld_model='quadratic'):
     flux = m.light_curve(params)
 
     return flux
+
+
+def get_param_dict_from_mcmc(filename, method='median', burnin=None, thin=15):
+    print('Importing fitted parameters from file {}.'.format(filename))
+
+    # Get MCMC chains from HDF5 file and extract best fitting parameters.
+    with h5py.File(filename, 'r') as f:
+        mcmc = f['mcmc']['chain'][()]
+        nwalkers, nchains, ndim = np.shape(mcmc)
+        # Discard burn in and thin chains.
+        if burnin is None:
+            burnin = int(0.75 * nwalkers * nchains)
+        mcmc = mcmc.reshape(nwalkers * nchains, ndim)[burnin:][::thin]
+        # Either get maximum likelihood solution...
+        if method == 'maxlike':
+            lp = f['mcmc']['log_prob'][()].flatten()[burnin:][::thin]
+            ii = np.argmax(lp)
+            bestfit = mcmc[ii]
+        # ...or take median of samples.
+        elif method == 'median':
+            bestfit = np.nanmedian(mcmc, axis=0)
+
+        # HDF5 groups are in alphabetical order. Reorder to match original
+        # inputs.
+        params, order = [], []
+        for param in f['inputs'].keys():
+            params.append(param)
+            order.append(f['inputs'][param].attrs['location'])
+        ii = np.argsort(order)
+        params = np.array(params)[ii]
+
+        # Create the parameter dictionary expected for Model using the fixed
+        # parameters from the original inputs and the MCMC results.
+        param_dict = {}
+        pcounter = 0
+        for param in params:
+            param_dict[param] = {}
+            dist = f['inputs'][param]['distribution'][()].decode()
+            # Used input values for fixed parameters.
+            if dist == 'fixed':
+                param_dict[param]['value'] = f['inputs'][param]['value'][()]
+            # Use fitted values for others.
+            else:
+                param_dict[param]['value'] = bestfit[pcounter]
+                pcounter += 1
+
+    return param_dict
