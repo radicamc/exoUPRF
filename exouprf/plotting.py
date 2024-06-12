@@ -8,10 +8,44 @@ Created on Wed Jun 12 11:13 2024
 Light curve plotting functions.
 """
 
+import corner
+import h5py
 import matplotlib.backends.backend_pdf
 from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 import numpy as np
+
+
+def make_corner_plot(filename, burnin=None, thin=15, labels=None):
+    """Make a corner plot of fitted posterior distributions.
+
+    Parameters
+    ----------
+    filename : str
+        Path to file with MCMC fit outputs.
+    burnin : int
+        Number of steps to discard as burn in. Defaults to 75% of chain
+        length.
+    thin : int
+        Increment by which to thin chains.
+    labels : list(str)
+        Fitted parameter names.
+    """
+
+    # Get MCMC chains from HDF5 file and extract best fitting parameters.
+    with h5py.File(filename, 'r') as f:
+        samples = f['mcmc']['chain'][()]
+        # Discard burn in and thin chains.
+        if burnin is None:
+            burnin = int(0.75 * np.shape(samples)[0])
+        # Cut steps for burn in.
+        samples = samples[burnin:]
+        nwalkers, nchains, ndim = np.shape(samples)
+        # Flatten chains.
+        samples = samples.reshape(nwalkers * nchains, ndim)[::thin]
+
+    # Make corner plot
+    corner.corner(samples, labels=labels, show_titles=True)
 
 
 def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None,
@@ -187,3 +221,35 @@ def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None,
         plt.close(fig)
     else:
         plt.show()
+
+
+def plot_mcmc_chains(filename, labels=None):
+    """Plot MCMC chains.
+
+    Parameters
+    ----------
+    filename : str
+        MCMC output file.
+    labels : list(str)
+        Fitted parameter names.
+    """
+
+    # Get MCMC chains.
+    with h5py.File(filename, 'r') as f:
+        samples = f['mcmc']['chain'][()]
+
+    nwalkers, nchains, ndim = np.shape(samples)
+    # Plot chains.
+    fig, axes = plt.subplots(ndim,
+                             figsize=(10, np.ceil(ndim / 1.25).astype(int)),
+                             sharex=True)
+    for i in range(ndim):
+        ax = axes[i]
+        ax.plot(samples[:, :, i], c='black', alpha=0.3)
+        ax.set_xlim(0, len(samples))
+        ax.yaxis.set_label_coords(-0.1, 0.5)
+        if labels is not None:
+            ax.set_ylabel(labels[i])
+
+    axes[-1].set_xlabel('Step Number')
+    plt.show()

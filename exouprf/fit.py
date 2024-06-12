@@ -17,6 +17,7 @@ import os
 from scipy.stats import norm, truncnorm
 
 import exouprf.model as model
+import exouprf.plotting as plotting
 
 
 class Dataset:
@@ -160,6 +161,34 @@ class Dataset:
                                                        burnin=burnin,
                                                        thin=thin)
         return results_dict
+
+    def plot_mcmc_chains(self, labels=None):
+        """Plot MCMC chains.
+
+        Parameters
+        ----------
+        labels : list(str)
+            Fitted parameter names.
+        """
+
+        plotting.plot_mcmc_chains(self.output_file, labels=labels)
+
+    def make_corner_plot(self, burnin=None, thin=15, labels=None):
+        """Make a corner plot of fitted posterior distributions.
+
+        Parameters
+        ----------
+        burnin : int
+            Number of steps to discard as burn in. Defaults to 75% of chain
+            length.
+        thin : int
+            Increment by which to thin chains.
+        labels : list(str)
+            Fitted parameter names.
+        """
+
+        plotting.make_corner_plot(self.output_file, burnin=burnin, thin=thin,
+                                  labels=labels)
 
 
 def fit_emcee(log_prob, output_file, initial_pos=None, continue_run=False,
