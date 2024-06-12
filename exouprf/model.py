@@ -420,3 +420,46 @@ def get_param_dict_from_mcmc(filename, method='median', burnin=None, thin=15):
                 pcounter += 1
 
     return param_dict
+
+
+def get_fit_results_from_mcmc(filename, burnin=None, thin=15):
+    print('Importing fit results from file {}.'.format(filename))
+
+    # Get MCMC chains from HDF5 file and extract best fitting parameters.
+    with h5py.File(filename, 'r') as f:
+        mcmc = f['mcmc']['chain'][()]
+        nwalkers, nchains, ndim = np.shape(mcmc)
+        # Discard burn in and thin chains.
+        if burnin is None:
+            burnin = int(0.75 * nwalkers * nchains)
+        mcmc = mcmc.reshape(nwalkers * nchains, ndim)[burnin:][::thin]
+
+        # HDF5 groups are in alphabetical order. Reorder to match original
+        # inputs.
+        params, order = [], []
+        for param in f['inputs'].keys():
+            params.append(param)
+            order.append(f['inputs'][param].attrs['location'])
+        ii = np.argsort(order)
+        params = np.array(params)[ii]
+
+        # Create the parameter dictionary expected for Model using the fixed
+        # parameters from the original inputs and the MCMC results.
+        results_dict = {}
+        pcounter = 0
+        for param in params:
+            dist = f['inputs'][param]['distribution'][()].decode()
+            # Skip fixed paramaters.
+            if dist == 'fixed':
+                continue
+            # Get posterior median and 1 sigma range for fitted paramters.
+            else:
+                results_dict[param] = {}
+                med = np.nanmedian(mcmc[:, pcounter], axis=0)
+                low, up = np.diff(np.nanpercentile(mcmc[:, pcounter], [16, 50, 84]))
+                results_dict[param]['median'] = med
+                results_dict[param]['low_1sigma'] = low
+                results_dict[param]['up_1sigma'] = up
+                pcounter += 1
+
+    return results_dict
