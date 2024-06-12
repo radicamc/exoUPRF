@@ -5,7 +5,7 @@ Created on Fri May 24 09:38 2024
 
 @author: MCR
 
-Stuff.
+Functions for fitting light curve models to data.
 """
 
 import copy
@@ -98,10 +98,12 @@ class Dataset:
                 msg = 'Starting positions must be provided for MCMC sampling.'
                 assert mcmc_start is not None, msg
 
+            # Arguments for the log probability function call.
             log_prob_args = (self.pl_params, self.t, self.observations,
                              self.linear_regressors, self.gp_regressors,
                              self.ld_model)
 
+            # Initialize and run the emcee sampler.
             mcmc_sampler = fit_emcee(log_probability, initial_pos=mcmc_start,
                                      silent=self.silent, mcmc_steps=mcmc_steps,
                                      log_probability_args=log_prob_args,
@@ -110,12 +112,50 @@ class Dataset:
             self.mcmc_sampler = mcmc_sampler
 
     def get_param_dict_from_mcmc(self, method='median', burnin=None, thin=15):
+        """Reformat MCMC fit outputs into the parameter dictionary format
+        expected by Model.
+
+        Parameters
+        ----------
+        method : str
+            Method via which to get best fitting parameters from MCMC chains.
+            Either "median" or "maxlike".
+        burnin : int
+            Number of steps to discard as burn in. Defaults to 75% of chain
+            length.
+        thin : int
+            Increment by which to thin chains.
+
+        Returns
+        -------
+        param_dict : dict
+            Dictionary of light curve model parameters.
+        """
+
         param_dict = model.get_param_dict_from_mcmc(self.output_file,
                                                     method=method,
                                                     burnin=burnin, thin=thin)
         return param_dict
 
     def get_fit_results_from_mcmc(self, burnin=None, thin=15):
+        """Extract MCMC posterior sample statistics (median and 1 sigma bounds)
+        for each fitted parameter.
+
+        Parameters
+        ----------
+        burnin : int
+            Number of steps to discard as burn in. Defaults to 75% of chain
+            length.
+        thin : int
+            Increment by which to thin chains.
+
+        Returns
+        -------
+        results_dict : dict
+            Dictionary of posterior medians and 1 sigma bounds for each fitted
+            parameter.
+        """
+
         results_dict = model.get_fit_results_from_mcmc(self.output_file,
                                                        burnin=burnin,
                                                        thin=thin)

@@ -5,7 +5,7 @@ Created on Fri May 24 09:36 2024
 
 @author: MCR
 
-Stuff.
+Functions for creating light curve models.
 """
 
 import batman
@@ -14,6 +14,8 @@ from celerite import terms
 import h5py
 import numpy as np
 
+from exouprf.utils import fancyprint
+
 # TODO: 1. Output plotting
 # TODO: 2. Kipping limb darkening
 # TODO: 3. Eclipse model
@@ -21,7 +23,8 @@ import numpy as np
 
 
 class Model:
-    """Class to create a light curve model.
+    """Secondary exoUPRF class. Creates light curve models given a set of
+    input parameters.
     """
 
     def __init__(self, input_parameters, t, linear_regressors=None,
@@ -104,8 +107,8 @@ class Model:
 
         for inst in self.multiplicity.keys():
             if not self.silent:
-                print('Importing parameters for {0} planet(s) from instrument '
-                      '{1}.'.format(len(self.multiplicity[inst]), inst))
+                fancyprint('Importing parameters for {0} planet(s) from '
+                           'instrument {1}.'.format(len(self.multiplicity[inst]), inst))
 
         # Set up storage dictionaries for properties of each planet.
         self.pl_params = {}
@@ -153,7 +156,7 @@ class Model:
         """
 
         if not self.silent:
-            print('Computing light curves for all instruments.')
+            fancyprint('Computing light curves for all instruments.')
 
         # Individually treat each instrument.
         for inst in self.multiplicity.keys():
@@ -219,8 +222,8 @@ class Model:
             # === Linear Models ===
             if use_lm is True:
                 if not self.silent:
-                    print('Linear model(s) detected for instrument '
-                          '{}.'.format(inst))
+                    fancyprint('Linear model(s) detected for '
+                               'instrument {}.'.format(inst))
                 self.flux_decomposed[inst]['lm'] = {}
                 regressors = np.array(self.linear_regressors[inst])
                 # Make sure that the number of regressors equals the number of
@@ -256,7 +259,7 @@ class Model:
                     if np.all(np.sort(gp_kernels[kernel]) == np.sort(gp_params)):
                         self.gp_kernel = kernel
                         if not self.silent:
-                            print('GP kernel {} identified.'.format(kernel))
+                            fancyprint('GP kernel {} identified.'.format(kernel))
                 if self.gp_kernel is None:
                     msg = 'No recognized GP kernel with parameters ' \
                           '{}.'.format(gp_params)
@@ -315,7 +318,7 @@ class Model:
             raise ValueError(msg)
 
         if not self.silent:
-            print('Simulating observations for all instruments.')
+            fancyprint('Simulating observations for all instruments.')
 
         # Add scatter to light curves.
         self.observations = {}
@@ -377,16 +380,41 @@ def batman_transit(t, t0, per, rp, a, inc, ecc, w, ld, ld_model='quadratic'):
 
 
 def get_param_dict_from_mcmc(filename, method='median', burnin=None, thin=15):
-    print('Importing fitted parameters from file {}.'.format(filename))
+    """Reformat MCMC fit outputs into the parameter dictionary format
+    expected by Model.
+
+    Parameters
+    ----------
+    filename : str
+        Path to file with MCMC fit outputs.
+    method : str
+        Method via which to get best fitting parameters from MCMC chains.
+        Either "median" or "maxlike".
+    burnin : int
+        Number of steps to discard as burn in. Defaults to 75% of chain
+        length.
+    thin : int
+        Increment by which to thin chains.
+
+    Returns
+    -------
+    param_dict : dict
+        Dictionary of light curve model parameters.
+    """
+
+    fancyprint('Importing fitted parameters from file {}.'.format(filename))
 
     # Get MCMC chains from HDF5 file and extract best fitting parameters.
     with h5py.File(filename, 'r') as f:
         mcmc = f['mcmc']['chain'][()]
-        nwalkers, nchains, ndim = np.shape(mcmc)
         # Discard burn in and thin chains.
         if burnin is None:
-            burnin = int(0.75 * nwalkers * nchains)
-        mcmc = mcmc.reshape(nwalkers * nchains, ndim)[burnin:][::thin]
+            burnin = int(0.75 * np.shape(mcmc)[0])
+        # Cut steps for burn in.
+        mcmc = mcmc[burnin:]
+        nwalkers, nchains, ndim = np.shape(mcmc)
+        # Flatten chains.
+        mcmc = mcmc.reshape(nwalkers * nchains, ndim)[::thin]
         # Either get maximum likelihood solution...
         if method == 'maxlike':
             lp = f['mcmc']['log_prob'][()].flatten()[burnin:][::thin]
@@ -424,16 +452,39 @@ def get_param_dict_from_mcmc(filename, method='median', burnin=None, thin=15):
 
 
 def get_fit_results_from_mcmc(filename, burnin=None, thin=15):
-    print('Importing fit results from file {}.'.format(filename))
+    """Extract MCMC posterior sample statistics (median and 1 sigma bounds)
+    for each fitted parameter.
+
+    Parameters
+    ----------
+    filename : str
+        Path to file with MCMC fit outputs.
+    burnin : int
+        Number of steps to discard as burn in. Defaults to 75% of chain
+        length.
+    thin : int
+        Increment by which to thin chains.
+
+    Returns
+    -------
+    results_dict : dict
+        Dictionary of posterior medians and 1 sigma bounds for each fitted
+        parameter.
+    """
+
+    fancyprint('Importing fit results from file {}.'.format(filename))
 
     # Get MCMC chains from HDF5 file and extract best fitting parameters.
     with h5py.File(filename, 'r') as f:
         mcmc = f['mcmc']['chain'][()]
-        nwalkers, nchains, ndim = np.shape(mcmc)
         # Discard burn in and thin chains.
         if burnin is None:
-            burnin = int(0.75 * nwalkers * nchains)
-        mcmc = mcmc.reshape(nwalkers * nchains, ndim)[burnin:][::thin]
+            burnin = int(0.75 * np.shape(mcmc)[0])
+        # Cut steps for burn in.
+        mcmc = mcmc[burnin:]
+        nwalkers, nchains, ndim = np.shape(mcmc)
+        # Flatten chains.
+        mcmc = mcmc.reshape(nwalkers * nchains, ndim)[::thin]
 
         # HDF5 groups are in alphabetical order. Reorder to match original
         # inputs.
