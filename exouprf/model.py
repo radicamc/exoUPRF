@@ -14,11 +14,12 @@ from celerite import terms
 import h5py
 import numpy as np
 
-# TODO: 1. Sampler output reading
-# TODO: 2. Output plotting
+# TODO: 1. Output plotting
+# TODO: 2. Kipping limb darkening
 # TODO: 3. Eclipse model
 # TODO: 4. Nested sampling
-# TODO: 5. Kipping limb darkening
+
+
 class Model:
     """Class to create a light curve model.
     """

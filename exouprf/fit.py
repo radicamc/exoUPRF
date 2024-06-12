@@ -16,7 +16,7 @@ import numpy as np
 import os
 from scipy.stats import norm, truncnorm
 
-from exouprf.model import Model
+import exouprf.model as model
 
 
 class Dataset:
@@ -63,6 +63,7 @@ class Dataset:
         self.mcmc_sampler = None
         self.flux_decomposed = None
         self.flux = None
+        self.output_file = None
 
         # For each parameter, get the prior function to be used based on the
         # indicated prior distribution.
@@ -83,9 +84,15 @@ class Dataset:
                       '{1}'.format(dist, param)
                 raise ValueError(msg)
 
-    def fit(self, sampler='mcmc', mcmc_start=None, mcmc_steps=10000,
-            save_results=True, output_file=None, continue_mcmc=False):
+    def fit(self, output_file, sampler='mcmc', mcmc_start=None,
+            mcmc_steps=10000, continue_mcmc=False):
 
+        # Set up and save output file name.
+        if output_file[-3:] != '.h5':
+            output_file += '.h5'
+        self.output_file = output_file
+
+        # For MCMC sampling with emcee.
         if sampler == 'mcmc':
             if continue_mcmc is False:
                 msg = 'Starting positions must be provided for MCMC sampling.'
@@ -98,21 +105,34 @@ class Dataset:
             mcmc_sampler = fit_emcee(log_probability, initial_pos=mcmc_start,
                                      silent=self.silent, mcmc_steps=mcmc_steps,
                                      log_probability_args=log_prob_args,
-                                     save_results=save_results,
                                      output_file=output_file,
                                      continue_run=continue_mcmc)
             self.mcmc_sampler = mcmc_sampler
 
+    def get_param_dict_from_mcmc(self, method='median', burnin=None, thin=15):
+        param_dict = model.get_param_dict_from_mcmc(self.output_file,
+                                                    method=method,
+                                                    burnin=burnin, thin=thin)
+        return param_dict
 
-def fit_emcee(log_prob, initial_pos=None, continue_run=False, silent=False,
-              mcmc_steps=10000, log_probability_args=None, save_results=True,
-              output_file=None):
+    def get_fit_results_from_mcmc(self, burnin=None, thin=15):
+        results_dict = model.get_fit_results_from_mcmc(self.output_file,
+                                                       burnin=burnin,
+                                                       thin=thin)
+        return results_dict
+
+
+def fit_emcee(log_prob, output_file, initial_pos=None, continue_run=False,
+              silent=False, mcmc_steps=10000, log_probability_args=None):
     """Run a light curve fit via MCMC using the emcee sampler.
 
     Parameters
     ----------
     log_prob : function
         Callable function to evaluate the fit log probability.
+    output_file : str
+        File to which to save outputs. If continuing a run, this should also
+        be the input file containing the previous MCMC chains.
     initial_pos : ndarray(float), None
         Starting positions for the MCMC sampling.
     continue_run : bool
@@ -123,11 +143,6 @@ def fit_emcee(log_prob, initial_pos=None, continue_run=False, silent=False,
         Number of MCMC steps before stopping.
     log_probability_args : tuple
         Arguments for the passed log_prob function.
-    save_results : bool
-        If True, save fit results and samples to a file.
-    output_file : str
-        File to which to save outputs. If continuing a run, this should also
-        be the input file containing the previous MCMC chains.
 
     Returns
     -------
@@ -137,12 +152,6 @@ def fit_emcee(log_prob, initial_pos=None, continue_run=False, silent=False,
 
     # If we want to restart from a previous chain, make sure all is good.
     if continue_run is True:
-        save_results = True
-        # Have to pass a file -- will save additional samples to same backend.
-        if output_file is None:
-            msg = 'continue_run option selected but no existing sampler ' \
-                  'file was passed.'
-            raise ValueError(msg)
         # Override any passed initial positions.
         if initial_pos is not None:
             msg = 'continue_run option selected. Ignoring passed initial ' \
@@ -150,52 +159,40 @@ def fit_emcee(log_prob, initial_pos=None, continue_run=False, silent=False,
             print(msg)
             initial_pos = None
 
-    # Set up output file.
-    if save_results is True:
-        if output_file is None:
-            msg = 'No output filename provided.'
-            raise ValueError(msg)
-        else:
-            if output_file[-3:] != '.h5':
-                output_file += '.h5'
+    # If we are starting a new run, we want to create the output h5 file
+    # and append useful information such as metadata and priors used for
+    # the fit.
+    if continue_run is False:
+        # Create all the metadata for this fit.
+        hf = h5py.File(output_file, 'w')
+        hf.attrs['Author'] = os.environ.get('USER')
+        hf.attrs['Date'] = datetime.utcnow().replace(microsecond=0).isoformat()
+        hf.attrs['Code'] = 'exoUPRF'
+        hf.attrs['Sampling'] = 'MCMC'
 
-        # If we are starting a new run, we want to create the output h5 file
-        # and append useful information such as metadata and priors used for
-        # the fit.
-        if continue_run is False:
-            # Create all the metadata for this fit.
-            hf = h5py.File(output_file, 'w')
-            hf.attrs['Author'] = os.environ.get('USER')
-            hf.attrs['Date'] = datetime.utcnow().replace(microsecond=0).isoformat()
-            hf.attrs['Code'] = 'exoUPRF'
-            hf.attrs['Sampling'] = 'MCMC'
+        # Add prior info.
+        inputs = log_probability_args[0]
+        for i, param in enumerate(inputs.keys()):
+            g = hf.create_group('inputs/{}'.format(param))
+            g.attrs['location'] = i
+            dt = h5py.string_dtype()
+            g.create_dataset('distribution',
+                             data=inputs[param]['distribution'], dtype=dt)
+            g.create_dataset('value', data=inputs[param]['value'])
+        hf.close()
 
-            # Add prior info.
-            inputs = log_probability_args[0]
-            for i, param in enumerate(inputs.keys()):
-                g = hf.create_group('inputs/{}'.format(param))
-                g.attrs['location'] = i
-                dt = h5py.string_dtype()
-                g.create_dataset('distribution',
-                                 data=inputs[param]['distribution'], dtype=dt)
-                g.create_dataset('value', data=inputs[param]['value'])
-            hf.close()
+        # Initialize the emcee backend.
+        backend = emcee.backends.HDFBackend(output_file)
+        nwalkers, ndim = initial_pos.shape
+        backend.reset(nwalkers, ndim)
 
-            # Initialize the emcee backend.
-            backend = emcee.backends.HDFBackend(output_file)
-            nwalkers, ndim = initial_pos.shape
-            backend.reset(nwalkers, ndim)
-
-        # If we're continuing a run, the metadata should already be there.
-        else:
-            # Don't reset the backend if we want to continue a run!!
-            backend = emcee.backends.HDFBackend(output_file)
-            nwalkers, ndim = backend.shape
-            print('Restarting fit from file {}.'.format(output_file))
-            print('{} steps already completed.'.format(backend.iteration))
+    # If we're continuing a run, the metadata should already be there.
     else:
-        nwalkers, ndim = np.shape(initial_pos)
-        backend = None
+        # Don't reset the backend if we want to continue a run!!
+        backend = emcee.backends.HDFBackend(output_file)
+        nwalkers, ndim = backend.shape
+        print('Restarting fit from file {}.'.format(output_file))
+        print('{} steps already completed.'.format(backend.iteration))
 
     # Do the sampling.
     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob, backend=backend,
@@ -274,9 +271,11 @@ def log_likelihood(theta, param_dict, time, observations,
         pcounter += 1
 
     # Evaluate the light curve model for all instruments.
-    thismodel = Model(param_dict, time, linear_regressors=linear_regressors,
-                      observations=observations, gp_regressors=gp_regressors,
-                      ld_model=ld_model, silent=True)
+    thismodel = model.Model(param_dict, time,
+                            linear_regressors=linear_regressors,
+                            observations=observations,
+                            gp_regressors=gp_regressors,
+                            ld_model=ld_model, silent=True)
     thismodel.compute_lightcurves()
 
     # For each instrument, calculate the likelihood.
