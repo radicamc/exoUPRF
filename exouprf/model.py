@@ -14,12 +14,12 @@ from celerite import terms
 import h5py
 import numpy as np
 
+import exouprf.utils as utils
 from exouprf.utils import fancyprint
 
-# TODO: 1. Output plotting
-# TODO: 2. Kipping limb darkening
-# TODO: 3. Eclipse model
-# TODO: 4. Nested sampling
+# TODO: 1. Kipping limb darkening
+# TODO: 2. Eclipse model
+# TODO: 3. Nested sampling
 
 
 class Model:
@@ -201,8 +201,19 @@ class Model:
                 # Pack limb darkening parameters.
                 ld_params = []
                 for param in self.pl_params[inst][pl].keys():
-                    if param in ['u1', 'u2', 'u3', 'u4']:
+                    if param in ['u1', 'u2', 'u3', 'u4', 'q1', 'q2']:
                         ld_params.append(self.pl_params[inst][pl][param])
+                # Convert from Kipping to normal LD if necessary.
+                if self.ld_model.split('-')[1] == 'kipping':
+                    assert len(ld_params) == 2
+                    msg = 'LD parameters must be >= 0 to use the Kipping ' \
+                          'parameterization.'
+                    assert np.all(np.array(ld_params) >= 0), msg
+                    u1, u2 = utils.ld_q2u(ld_params[0], ld_params[1])
+                    ld_params = [u1, u2]
+                    ld_model = self.ld_model.split('-')[0]
+                else:
+                    ld_model = self.ld_model
                 # Calculate a basic transit model using the input parameters.
                 pl_flux = batman_transit(self.t[inst],
                                          self.pl_params[inst][pl]['t0'],
@@ -212,7 +223,7 @@ class Model:
                                          self.pl_params[inst][pl]['inc'],
                                          self.pl_params[inst][pl]['ecc'],
                                          self.pl_params[inst][pl]['w'],
-                                         ld_params, ld_model=self.ld_model)
+                                         ld_params, ld_model=ld_model)
                 # Store the model for each planet seperately.
                 self.flux_decomposed[inst]['pl'][pl] = pl_flux
                 # Add contribution of planet to the total astrophysical model.
