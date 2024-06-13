@@ -128,7 +128,7 @@ def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None,
             chi2_v = chi2(data * 1e6, model * 1e6, errors * 1e6) / (len(t) - nfit)
             txt += r'$\chi_\nu^2 = {:.2f}$''\n'.format(chi2_v)
         mean_err = np.nanmean(errors)
-        err_mult = scatter / (mean_err)
+        err_mult = scatter / mean_err
         txt += r'$\sigma={:.2f}$ppm''\n'r'$e={:.2f}$'.format(mean_err*1e6, err_mult)
     ax1.text(t[2], np.min(model), txt, fontsize=14)
 

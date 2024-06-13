@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Fri May 24 09:36 2024
+Created on Thurs Jun 13 09:52 2024
 
 @author: MCR
 
@@ -11,20 +11,18 @@ Functions for creating light curve models.
 import batman
 import celerite
 from celerite import terms
-import h5py
+
 import numpy as np
 
 import exouprf.utils as utils
 from exouprf.utils import fancyprint
 
-# TODO: 1. Kipping limb darkening
-# TODO: 2. Eclipse model
-# TODO: 3. Nested sampling
+# TODO: 1. Nested sampling
 
 
-class Model:
+class LightCurveModel:
     """Secondary exoUPRF class. Creates light curve models given a set of
-    input parameters.
+    input parameters and light curve model function.
     """
 
     def __init__(self, input_parameters, t, linear_regressors=None,
@@ -151,8 +149,17 @@ class Model:
         for inst in self.t.keys():
             self.t[inst] = self.t[inst].astype(np.float64)
 
-    def compute_lightcurves(self):
+    def compute_lightcurves(self, lc_model_type):
         """Given a set of input parameters, compute a light curve model.
+
+        Parameters
+        ----------
+        lc_model_type : dict
+            Dictionary of light curve model types for each instrument and
+            planet. Should have form {inst: {pl: model}}. "transit" and
+            "eclipse" models are supported by default. Custom models are
+            possible, and, in this case, model should be the call to the
+            custom model function.
         """
 
         if not self.silent:
@@ -204,26 +211,36 @@ class Model:
                     if param in ['u1', 'u2', 'u3', 'u4', 'q1', 'q2']:
                         ld_params.append(self.pl_params[inst][pl][param])
                 # Convert from Kipping to normal LD if necessary.
-                if self.ld_model.split('-')[1] == 'kipping':
-                    assert len(ld_params) == 2
-                    msg = 'LD parameters must be >= 0 to use the Kipping ' \
-                          'parameterization.'
-                    assert np.all(np.array(ld_params) >= 0), msg
-                    u1, u2 = utils.ld_q2u(ld_params[0], ld_params[1])
-                    ld_params = [u1, u2]
-                    ld_model = self.ld_model.split('-')[0]
-                else:
+                try:
+                    if self.ld_model.split('-')[1] == 'kipping':
+                        assert len(ld_params) == 2
+                        msg = 'LD parameters must be >= 0 to use the ' \
+                              'Kipping parameterization.'
+                        assert np.all(np.array(ld_params) >= 0), msg
+                        u1, u2 = utils.ld_q2u(ld_params[0], ld_params[1])
+                        ld_params = [u1, u2]
+                        ld_model = self.ld_model.split('-')[0]
+                    else:
+                        ld_model = self.ld_model
+                except IndexError:
                     ld_model = self.ld_model
-                # Calculate a basic transit model using the input parameters.
-                pl_flux = batman_transit(self.t[inst],
-                                         self.pl_params[inst][pl]['t0'],
-                                         self.pl_params[inst][pl]['per'],
-                                         self.pl_params[inst][pl]['rp'],
-                                         self.pl_params[inst][pl]['a'],
-                                         self.pl_params[inst][pl]['inc'],
-                                         self.pl_params[inst][pl]['ecc'],
-                                         self.pl_params[inst][pl]['w'],
-                                         ld_params, ld_model=ld_model)
+
+                # === Do the Light Curve Calculation ===
+                if lc_model_type[inst][pl] == 'transit':
+                    # Calculate a basic transit model using the input
+                    # parameters.
+                    pl_flux = simple_transit(self.t[inst],
+                                             self.pl_params[inst][pl],
+                                             ld_params, ld_model=ld_model)
+                elif lc_model_type[inst][pl] == 'eclipse':
+                    # Calculate a basic eclipse model using the input
+                    # parameters.
+                    pl_flux = simple_eclipse(self.t[inst],
+                                             self.pl_params[inst][pl])
+                else:
+                    msg = 'Unknown light curve model type ' \
+                          '{}.'.format(lc_model_type[inst][pl])
+                    raise ValueError(msg)
                 # Store the model for each planet seperately.
                 self.flux_decomposed[inst]['pl'][pl] = pl_flux
                 # Add contribution of planet to the total astrophysical model.
@@ -282,11 +299,11 @@ class Model:
                 if self.gp_kernel == 'SHO-gran':
                     # Convert from granulation parameters to SHO parameters.
                     omega = 2 * np.pi * self.pl_params[inst]['GP_bg']
-                    S0 = 2 * self.pl_params[inst]['GP_ag']**2 / self.pl_params[inst]['GP_bg']
-                    Q = self.pl_params[inst]['GP_Q']
-                    kernel = terms.SHOTerm(log_S0=np.log(S0),
+                    s0 = 2 * self.pl_params[inst]['GP_ag']**2 / self.pl_params[inst]['GP_bg']
+                    q = self.pl_params[inst]['GP_Q']
+                    kernel = terms.SHOTerm(log_S0=np.log(s0),
                                            log_omega0=np.log(omega),
-                                           log_Q=np.log(Q))
+                                           log_Q=np.log(q))
                 elif self.gp_kernel == 'SHO':
                     kernel = terms.SHOTerm(log_S0=np.log(self.pl_params[inst]['GP_S0']),
                                            log_omega0=np.log(self.pl_params[inst]['GP_omega0']),
@@ -341,27 +358,66 @@ class Model:
             self.observations[inst]['flux_err'] = jitter
 
 
-def batman_transit(t, t0, per, rp, a, inc, ecc, w, ld, ld_model='quadratic'):
+def simple_eclipse(t, pl_params):
+    """Calculate a simple eclipse model.
+
+    Parameters
+    ----------
+    t : ndarray(float)
+        Time stamps at which to calculate the light curve.
+    pl_params : dict
+        Dictionary of input parameters. Must contain the following:
+        t0, time of mid-transit
+        per, planet orbital period in days
+        rp, planet-to-star radius ratio
+        a, planet semi-major axis in units of stellar radii
+        inc, planet orbital inclination in degrees
+        ecc, planet orbital eccentricity
+        w, planet argument of periastron
+        tsec, time of secondary eclipse
+        fp, planet-to-star flux ratio.
+
+    Returns
+    -------
+    flux : ndarray(float)
+        Model light curve.
+    """
+
+    params = batman.TransitParams()
+    params.t0 = pl_params['t0']
+    params.per = pl_params['per']
+    params.rp = pl_params['rp']
+    params.a = pl_params['a']
+    params.inc = pl_params['inc']
+    params.ecc = pl_params['ecc']
+    params.w = pl_params['w']
+    params.limb_dark = 'quadratic'
+    params.u = [0.1, 0.1]
+    params.t_secondary = pl_params['tsec']
+    params.fp = pl_params['fp']
+
+    m = batman.TransitModel(params, t, transittype='secondary')
+    flux = m.light_curve(params)
+
+    return flux
+
+
+def simple_transit(t, pl_params, ld, ld_model='quadratic'):
     """Calculate a simple transit model.
 
     Parameters
     ----------
     t : ndarray(float)
         Time stamps at which to calculate the light curve.
-    t0 : float
-        Time of mid-transit.
-    per : float
-        Planet orbital period in days.
-    rp : float
-        Planet-to-star radius ratio.
-    a : float
-        Planet semi-major axis in units of stellar radii.
-    inc : float
-        Planet orbital inclination in degrees.
-    ecc : float
-        Planet orbital eccentricity.
-    w : float
-        Planet argument of periastron.
+    pl_params : dict
+        Dictionary of input parameters. Must contain the following:
+        t0, time of mid-transit
+        per, planet orbital period in days
+        rp, planet-to-star radius ratio
+        a, planet semi-major axis in units of stellar radii
+        inc, planet orbital inclination in degrees
+        ecc, planet orbital eccentricity
+        w, planet argument of periastron.
     ld : list(float)
         List of limb darkening parameters.
     ld_model : str
@@ -374,13 +430,13 @@ def batman_transit(t, t0, per, rp, a, inc, ecc, w, ld, ld_model='quadratic'):
     """
 
     params = batman.TransitParams()
-    params.t0 = t0
-    params.per = per
-    params.rp = rp
-    params.a = a
-    params.inc = inc
-    params.ecc = ecc
-    params.w = w
+    params.t0 = pl_params['t0']
+    params.per = pl_params['per']
+    params.rp = pl_params['rp']
+    params.a = pl_params['a']
+    params.inc = pl_params['inc']
+    params.ecc = pl_params['ecc']
+    params.w = pl_params['w']
     params.limb_dark = ld_model
     params.u = ld
 
@@ -388,141 +444,3 @@ def batman_transit(t, t0, per, rp, a, inc, ecc, w, ld, ld_model='quadratic'):
     flux = m.light_curve(params)
 
     return flux
-
-
-def get_param_dict_from_mcmc(filename, method='median', burnin=None, thin=15):
-    """Reformat MCMC fit outputs into the parameter dictionary format
-    expected by Model.
-
-    Parameters
-    ----------
-    filename : str
-        Path to file with MCMC fit outputs.
-    method : str
-        Method via which to get best fitting parameters from MCMC chains.
-        Either "median" or "maxlike".
-    burnin : int
-        Number of steps to discard as burn in. Defaults to 75% of chain
-        length.
-    thin : int
-        Increment by which to thin chains.
-
-    Returns
-    -------
-    param_dict : dict
-        Dictionary of light curve model parameters.
-    """
-
-    fancyprint('Importing fitted parameters from file {}.'.format(filename))
-
-    # Get MCMC chains from HDF5 file and extract best fitting parameters.
-    with h5py.File(filename, 'r') as f:
-        mcmc = f['mcmc']['chain'][()]
-        # Discard burn in and thin chains.
-        if burnin is None:
-            burnin = int(0.75 * np.shape(mcmc)[0])
-        # Cut steps for burn in.
-        mcmc = mcmc[burnin:]
-        nwalkers, nchains, ndim = np.shape(mcmc)
-        # Flatten chains.
-        mcmc = mcmc.reshape(nwalkers * nchains, ndim)[::thin]
-        # Either get maximum likelihood solution...
-        if method == 'maxlike':
-            lp = f['mcmc']['log_prob'][()].flatten()[burnin:][::thin]
-            ii = np.argmax(lp)
-            bestfit = mcmc[ii]
-        # ...or take median of samples.
-        elif method == 'median':
-            bestfit = np.nanmedian(mcmc, axis=0)
-
-        # HDF5 groups are in alphabetical order. Reorder to match original
-        # inputs.
-        params, order = [], []
-        for param in f['inputs'].keys():
-            params.append(param)
-            order.append(f['inputs'][param].attrs['location'])
-        ii = np.argsort(order)
-        params = np.array(params)[ii]
-
-        # Create the parameter dictionary expected for Model using the fixed
-        # parameters from the original inputs and the MCMC results.
-        param_dict = {}
-        pcounter = 0
-        for param in params:
-            param_dict[param] = {}
-            dist = f['inputs'][param]['distribution'][()].decode()
-            # Used input values for fixed parameters.
-            if dist == 'fixed':
-                param_dict[param]['value'] = f['inputs'][param]['value'][()]
-            # Use fitted values for others.
-            else:
-                param_dict[param]['value'] = bestfit[pcounter]
-                pcounter += 1
-
-    return param_dict
-
-
-def get_fit_results_from_mcmc(filename, burnin=None, thin=15):
-    """Extract MCMC posterior sample statistics (median and 1 sigma bounds)
-    for each fitted parameter.
-
-    Parameters
-    ----------
-    filename : str
-        Path to file with MCMC fit outputs.
-    burnin : int
-        Number of steps to discard as burn in. Defaults to 75% of chain
-        length.
-    thin : int
-        Increment by which to thin chains.
-
-    Returns
-    -------
-    results_dict : dict
-        Dictionary of posterior medians and 1 sigma bounds for each fitted
-        parameter.
-    """
-
-    fancyprint('Importing fit results from file {}.'.format(filename))
-
-    # Get MCMC chains from HDF5 file and extract best fitting parameters.
-    with h5py.File(filename, 'r') as f:
-        mcmc = f['mcmc']['chain'][()]
-        # Discard burn in and thin chains.
-        if burnin is None:
-            burnin = int(0.75 * np.shape(mcmc)[0])
-        # Cut steps for burn in.
-        mcmc = mcmc[burnin:]
-        nwalkers, nchains, ndim = np.shape(mcmc)
-        # Flatten chains.
-        mcmc = mcmc.reshape(nwalkers * nchains, ndim)[::thin]
-
-        # HDF5 groups are in alphabetical order. Reorder to match original
-        # inputs.
-        params, order = [], []
-        for param in f['inputs'].keys():
-            params.append(param)
-            order.append(f['inputs'][param].attrs['location'])
-        ii = np.argsort(order)
-        params = np.array(params)[ii]
-
-        # Create the parameter dictionary expected for Model using the fixed
-        # parameters from the original inputs and the MCMC results.
-        results_dict = {}
-        pcounter = 0
-        for param in params:
-            dist = f['inputs'][param]['distribution'][()].decode()
-            # Skip fixed paramaters.
-            if dist == 'fixed':
-                continue
-            # Get posterior median and 1 sigma range for fitted paramters.
-            else:
-                results_dict[param] = {}
-                med = np.nanmedian(mcmc[:, pcounter], axis=0)
-                low, up = np.diff(np.nanpercentile(mcmc[:, pcounter], [16, 50, 84]))
-                results_dict[param]['median'] = med
-                results_dict[param]['low_1sigma'] = low
-                results_dict[param]['up_1sigma'] = up
-                pcounter += 1
-
-    return results_dict

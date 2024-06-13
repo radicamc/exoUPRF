@@ -16,8 +16,9 @@ import numpy as np
 import os
 from scipy.stats import norm, truncnorm
 
-import exouprf.model as model
+from exouprf.light_curve_models import LightCurveModel
 import exouprf.plotting as plotting
+import exouprf.utils as utils
 
 
 class Dataset:
@@ -25,9 +26,9 @@ class Dataset:
     performs light curve fits.
     """
 
-    def __init__(self, input_parameters, t, linear_regressors=None,
-                 observations=None, gp_regressors=None, ld_model='quadratic',
-                 silent=False):
+    def __init__(self, input_parameters, t, lc_model_type,
+                 linear_regressors=None, observations=None, gp_regressors=None,
+                 ld_model='quadratic',  silent=False):
         """Initialize the Dataset class.
 
         Parameters
@@ -38,6 +39,9 @@ class Dataset:
         t : dict
             Dictionary of timestamps for each instrument. Should have form
             {instrument: times}.
+        lc_model_type : dict
+            Dictionary of light curve models for each planet and instrument.
+            Should have form {instrument: {pl: model}}.
         linear_regressors : dict
             Dictionary of regressors for linear models. Should have form
             {instrument: regressors}.
@@ -56,6 +60,7 @@ class Dataset:
         # Initialize easy attributes.
         self.t = t
         self.ld_model = ld_model
+        self.lc_model = lc_model_type
         self.observations = observations
         self.linear_regressors = linear_regressors
         self.gp_regressors = gp_regressors
@@ -101,8 +106,8 @@ class Dataset:
 
             # Arguments for the log probability function call.
             log_prob_args = (self.pl_params, self.t, self.observations,
-                             self.linear_regressors, self.gp_regressors,
-                             self.ld_model)
+                             self.lc_model, self.linear_regressors,
+                             self.gp_regressors, self.ld_model)
 
             # Initialize and run the emcee sampler.
             mcmc_sampler = fit_emcee(log_probability, initial_pos=mcmc_start,
@@ -133,7 +138,7 @@ class Dataset:
             Dictionary of light curve model parameters.
         """
 
-        param_dict = model.get_param_dict_from_mcmc(self.output_file,
+        param_dict = utils.get_param_dict_from_mcmc(self.output_file,
                                                     method=method,
                                                     burnin=burnin, thin=thin)
         return param_dict
@@ -157,7 +162,7 @@ class Dataset:
             parameter.
         """
 
-        results_dict = model.get_fit_results_from_mcmc(self.output_file,
+        results_dict = utils.get_fit_results_from_mcmc(self.output_file,
                                                        burnin=burnin,
                                                        thin=thin)
         return results_dict
@@ -301,7 +306,7 @@ def set_logprior(theta, param_dict):
     return log_prior
 
 
-def log_likelihood(theta, param_dict, time, observations,
+def log_likelihood(theta, param_dict, time, observations, lc_model,
                    linear_regressors=None, gp_regressors=None,
                    ld_model='quadratic'):
     """Evaluate the log likelihood for a dataset and a given set of model
@@ -317,6 +322,8 @@ def log_likelihood(theta, param_dict, time, observations,
         Dictonary of timestamps corresponding to the observations.
     observations : dict
         Dictionary of observations.
+    lc_model : dict
+        Dictionary of light curve model calls.
     linear_regressors : dict
         Dictionary of regressors for linear models.
     gp_regressors : dict
@@ -340,12 +347,12 @@ def log_likelihood(theta, param_dict, time, observations,
         pcounter += 1
 
     # Evaluate the light curve model for all instruments.
-    thismodel = model.Model(param_dict, time,
-                            linear_regressors=linear_regressors,
-                            observations=observations,
-                            gp_regressors=gp_regressors,
-                            ld_model=ld_model, silent=True)
-    thismodel.compute_lightcurves()
+    thismodel = LightCurveModel(param_dict, time,
+                                linear_regressors=linear_regressors,
+                                observations=observations,
+                                gp_regressors=gp_regressors,
+                                ld_model=ld_model, silent=True)
+    thismodel.compute_lightcurves(lc_model_type=lc_model)
 
     # For each instrument, calculate the likelihood.
     for inst in observations.keys():
@@ -359,7 +366,7 @@ def log_likelihood(theta, param_dict, time, observations,
     return log_like
 
 
-def log_probability(theta, param_dict, time, observations,
+def log_probability(theta, param_dict, time, observations, lc_model,
                     linear_regressors=None, gp_regressors=None,
                     ld_model='quadratic'):
     """Evaluate the log probability for a dataset and a given set of model
@@ -375,6 +382,8 @@ def log_probability(theta, param_dict, time, observations,
         Dictonary of timestamps corresponding to the observations.
     observations : dict
         Dictionary of observations.
+    lc_model : dict
+        Dictionary of light curve model calls.
     linear_regressors : dict
         Dictionary of regressors for linear models.
     gp_regressors : dict
@@ -392,7 +401,7 @@ def log_probability(theta, param_dict, time, observations,
     if not np.isfinite(lp):
         return -np.inf
     ll = log_likelihood(theta, copy.deepcopy(param_dict), time, observations,
-                        linear_regressors, gp_regressors, ld_model)
+                        lc_model, linear_regressors, gp_regressors, ld_model)
     log_prob = lp + ll
 
     return log_prob
@@ -435,5 +444,3 @@ def logprior_truncatednormal(x, hyperparams):
     mu, sigma, low_bound, up_bound = hyperparams
     return np.log(truncnorm.ppf(x, (low_bound - mu) / sigma,
                                 (up_bound - mu) / sigma, loc=mu, scale=sigma))
-
-
