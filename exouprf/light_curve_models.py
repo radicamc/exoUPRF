@@ -65,6 +65,7 @@ class LightCurveModel:
         self.gp_kernel = None
         self.flux_decomposed = {}
         self.flux = {}
+        self.gp = {}
 
         # Unpack the input parameter dictionary into a form more amenable to
         # create models.
@@ -309,18 +310,27 @@ class LightCurveModel:
                                            log_omega0=np.log(self.pl_params[inst]['GP_omega0']),
                                            log_Q=np.log(self.pl_params[inst]['GP_Q']))
                 elif self.gp_kernel == 'Matern 3/2':
-                    kernel = terms.SHOTerm(log_sigma=np.log(self.pl_params[inst]['GP_sigma']),
-                                           log_rho=np.log(self.pl_params[inst]['GP_rho']))
+                    kernel = terms.Matern32Term(log_sigma=np.log(self.pl_params[inst]['GP_sigma']),
+                                                log_rho=np.log(self.pl_params[inst]['GP_rho']))
                 else:
                     raise ValueError('Bad GP kernel.')
 
                 # Use the GP to make a prediction based on the observations
                 # and current light curve model.
                 gp = celerite.GP(kernel, mean=0)
-                gp.compute(self.t[inst], self.pl_params[inst]['sigma'])
-                thismodel = gp.predict(self.observations[inst]['flux'] - self.flux[inst],
-                                       self.t[inst], return_cov=False,
-                                       return_var=False)
+                try:
+                    gp.compute(self.t[inst], self.pl_params[inst]['sigma'])
+                    thismodel = gp.predict(self.observations[inst]['flux'] - self.flux[inst],
+                                           self.t[inst], return_cov=False,
+                                           return_var=False)
+                    self.gp[inst] = gp
+                except Exception as err:
+                    if str(err) == 'failed to factorize or solve matrix':
+                        self.flux_decomposed[inst]['total'] = -np.inf*self.flux[inst]
+                        return
+                    else:
+                        raise err
+
                 # Add GP model to light curve model.
                 self.flux_decomposed[inst]['gp']['total'] = thismodel
                 self.flux[inst] += self.flux_decomposed[inst]['gp']['total']

@@ -19,6 +19,7 @@ from scipy.stats import norm, truncnorm
 from exouprf.light_curve_models import LightCurveModel
 import exouprf.plotting as plotting
 import exouprf.utils as utils
+from exouprf.utils import fancyprint
 
 
 class Dataset:
@@ -230,7 +231,7 @@ def fit_emcee(log_prob, output_file, initial_pos=None, continue_run=False,
         if initial_pos is not None:
             msg = 'continue_run option selected. Ignoring passed initial ' \
                   'positions.'
-            print(msg)
+            fancyprint(msg, msg_type='WARNING')
             initial_pos = None
 
     # If we are starting a new run, we want to create the output h5 file
@@ -265,8 +266,8 @@ def fit_emcee(log_prob, output_file, initial_pos=None, continue_run=False,
         # Don't reset the backend if we want to continue a run!!
         backend = emcee.backends.HDFBackend(output_file)
         nwalkers, ndim = backend.shape
-        print('Restarting fit from file {}.'.format(output_file))
-        print('{} steps already completed.'.format(backend.iteration))
+        fancyprint('Restarting fit from file {}.'.format(output_file))
+        fancyprint('{} steps already completed.'.format(backend.iteration))
 
     # Do the sampling.
     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob, backend=backend,
@@ -356,12 +357,21 @@ def log_likelihood(theta, param_dict, time, observations, lc_model,
 
     # For each instrument, calculate the likelihood.
     for inst in observations.keys():
-        mod = thismodel.flux_decomposed[inst]['total']
         dat = observations[inst]['flux']
         t = time[inst]
         err = param_dict['sigma_{}'.format(inst)]['value']
-        log_like -= 0.5 * np.log(2 * np.pi * err**2) * len(t)
-        log_like -= 0.5 * np.sum((dat - mod)**2 / err**2)
+        # If GP is used, evaluiate log likelihood with celerite.
+        if inst in thismodel.gp.keys():
+            mod = thismodel.flux_decomposed[inst]['total'] - thismodel.flux_decomposed[inst]['gp']['total']
+            gp = thismodel.gp[inst]
+            log_like += gp.log_likelihood(dat - mod, quiet=True)
+        # If not, normal Gaussian likelihood.
+        else:
+            mod = thismodel.flux_decomposed[inst]['total']
+            if not np.all(np.isfinite(mod)):
+                return -np.inf
+            log_like -= 0.5 * np.log(2 * np.pi * err**2) * len(t)
+            log_like -= 0.5 * np.sum((dat - mod)**2 / err**2)
 
     return log_like
 
@@ -402,6 +412,9 @@ def log_probability(theta, param_dict, time, observations, lc_model,
         return -np.inf
     ll = log_likelihood(theta, copy.deepcopy(param_dict), time, observations,
                         lc_model, linear_regressors, gp_regressors, ld_model)
+    if not np.isfinite(ll):
+        return -np.inf
+
     log_prob = lp + ll
 
     return log_prob
