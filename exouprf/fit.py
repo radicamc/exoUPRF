@@ -360,14 +360,16 @@ def log_likelihood(theta, param_dict, time, observations, lc_model,
         dat = observations[inst]['flux']
         t = time[inst]
         err = param_dict['sigma_{}'.format(inst)]['value']
-        # If GP is used, evaluiate log likelihood with celerite.
+        # If GP is used, evaluate log likelihood with celerite.
         if inst in thismodel.gp.keys():
-            mod = thismodel.flux_decomposed[inst]['total'] - thismodel.flux_decomposed[inst]['gp']['total']
+            mod = thismodel.flux[inst] - thismodel.flux_decomposed[inst]['gp']['total']
+            if not np.all(np.isfinite(mod)):
+                return -np.inf
             gp = thismodel.gp[inst]
             log_like += gp.log_likelihood(dat - mod, quiet=True)
         # If not, normal Gaussian likelihood.
         else:
-            mod = thismodel.flux_decomposed[inst]['total']
+            mod = thismodel.flux[inst]
             if not np.all(np.isfinite(mod)):
                 return -np.inf
             log_like -= 0.5 * np.log(2 * np.pi * err**2) * len(t)

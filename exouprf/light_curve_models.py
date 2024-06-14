@@ -302,7 +302,7 @@ class LightCurveModel:
                 if self.gp_kernel == 'SHO-gran':
                     # Convert from granulation parameters to SHO parameters.
                     omega = 2 * np.pi * self.pl_params[inst]['GP_bg']
-                    s0 = 2 * self.pl_params[inst]['GP_ag']**2 / self.pl_params[inst]['GP_bg']
+                    s0 = self.pl_params[inst]['GP_ag']**2 / omega / np.sqrt(2)
                     q = self.pl_params[inst]['GP_Q']
                     kernel = terms.SHOTerm(log_S0=np.log(s0),
                                            log_omega0=np.log(omega),
