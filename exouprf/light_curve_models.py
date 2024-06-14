@@ -141,7 +141,9 @@ class LightCurveModel:
             else:
                 # Add to correct instrument and planet dictionary.
                 for inst in self.multiplicity.keys():
-                    if inst in param_split:
+                    # Orbital parameters are not instrument dependent.
+                    orb = ['per', 't0', 'a', 'inc', 'ecc', 'w']
+                    if inst in param_split or prop in orb:
                         for pl in self.multiplicity[inst]:
                             if pl in param_split:
                                 self.pl_params[inst][pl][prop] = input_parameters[param]['value']
