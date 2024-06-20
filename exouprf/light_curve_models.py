@@ -141,9 +141,10 @@ class LightCurveModel:
                 for inst in self.multiplicity.keys():
                     # Orbital parameters are not instrument dependent.
                     orb = ['per', 't0', 'a', 'inc', 'ecc', 'w']
+                    lds = ['u1', 'u2', 'u3', 'u4', 'q1', 'q2']
                     if inst in param_split or prop in orb:
                         for pl in self.multiplicity[inst]:
-                            if pl in param_split:
+                            if pl in param_split or prop in lds:
                                 self.pl_params[inst][pl][prop] = input_parameters[param]['value']
 
         # Convert timestamps to float64 -- avoids issue with batman.

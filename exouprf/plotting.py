@@ -16,33 +16,36 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def make_corner_plot(filename, burnin=None, thin=15, labels=None):
+def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None):
     """Make a corner plot of fitted posterior distributions.
 
     Parameters
     ----------
     filename : str
         Path to file with MCMC fit outputs.
-    burnin : int
+    mcmc_burnin : int
         Number of steps to discard as burn in. Defaults to 75% of chain
-        length.
-    thin : int
-        Increment by which to thin chains.
+        length. MCMC only.
+    mcmc_thin : int
+        Increment by which to thin chains. MCMC only.
     labels : list(str)
         Fitted parameter names.
     """
 
-    # Get MCMC chains from HDF5 file and extract best fitting parameters.
+    # Get chains from HDF5 file and extract best fitting parameters.
     with h5py.File(filename, 'r') as f:
-        samples = f['mcmc']['chain'][()]
-        # Discard burn in and thin chains.
-        if burnin is None:
-            burnin = int(0.75 * np.shape(samples)[0])
-        # Cut steps for burn in.
-        samples = samples[burnin:]
-        nwalkers, nchains, ndim = np.shape(samples)
-        # Flatten chains.
-        samples = samples.reshape(nwalkers * nchains, ndim)[::thin]
+        if 'mcmc' in list(f.keys()):
+            samples = f['mcmc']['chain'][()]
+            # Discard burn in and thin chains.
+            if mcmc_burnin is None:
+                mcmc_burnin = int(0.75 * np.shape(samples)[0])
+            # Cut steps for burn in.
+            samples = samples[mcmc_burnin:]
+            nwalkers, nchains, ndim = np.shape(samples)
+            # Flatten chains.
+            samples = samples.reshape(nwalkers * nchains, ndim)[::mcmc_thin]
+        elif 'ns' in list(f.keys()):
+            samples = f['ns']['chain'][()]
 
     # Make corner plot
     corner.corner(samples, labels=labels, show_titles=True)

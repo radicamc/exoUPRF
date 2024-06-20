@@ -244,22 +244,22 @@ class Dataset:
 
         plotting.plot_mcmc_chains(self.output_file, labels=labels)
 
-    def make_corner_plot(self, burnin=None, thin=15, labels=None):
+    def make_corner_plot(self, mcmc_burnin=None, mcmc_thin=15, labels=None):
         """Make a corner plot of fitted posterior distributions.
 
         Parameters
         ----------
-        burnin : int
+        mcmc_burnin : int
             Number of steps to discard as burn in. Defaults to 75% of chain
             length.
-        thin : int
+        mcmc_thin : int
             Increment by which to thin chains.
         labels : list(str)
             Fitted parameter names.
         """
 
-        plotting.make_corner_plot(self.output_file, burnin=burnin, thin=thin,
-                                  labels=labels)
+        plotting.make_corner_plot(self.output_file, mcmc_burnin=mcmc_burnin,
+                                  mcmc_thin=mcmc_thin, labels=labels)
 
 
 def fit_dynesty(prior_transform, log_like, ndim, output_file,
