@@ -10,6 +10,7 @@ Functions for fitting light curve models to data.
 
 import copy
 from datetime import datetime
+from dynesty import NestedSampler
 import h5py
 import emcee
 import numpy as np
@@ -29,7 +30,7 @@ class Dataset:
 
     def __init__(self, input_parameters, t, lc_model_type,
                  linear_regressors=None, observations=None, gp_regressors=None,
-                 ld_model='quadratic',  silent=False):
+                 ld_model='quadratic',  silent=False, sampler='MCMC'):
         """Initialize the Dataset class.
 
         Parameters
@@ -68,31 +69,13 @@ class Dataset:
         self.pl_params = input_parameters
         self.silent = silent
         self.mcmc_sampler = None
+        self.nested_sampler = None
         self.flux_decomposed = None
         self.flux = None
         self.output_file = None
 
-        # For each parameter, get the prior function to be used based on the
-        # indicated prior distribution.
-        for param in self.pl_params:
-            dist = self.pl_params[param]['distribution']
-            if dist == 'fixed':
-                self.pl_params[param]['function'] = None
-            elif dist == 'uniform':
-                self.pl_params[param]['function'] = logprior_uniform
-            elif dist == 'loguniform':
-                self.pl_params[param]['function'] = logprior_loguniform
-            elif dist == 'normal':
-                self.pl_params[param]['function'] = logprior_normal
-            elif dist == 'truncated_normal':
-                self.pl_params[param]['function'] = logprior_truncatednormal
-            else:
-                msg = 'Unknown distribution {0} for parameter ' \
-                      '{1}'.format(dist, param)
-                raise ValueError(msg)
-
-    def fit(self, output_file, sampler='mcmc', mcmc_start=None,
-            mcmc_steps=10000, continue_mcmc=False):
+    def fit(self, output_file, sampler='MCMC', mcmc_start=None,
+            mcmc_steps=10000, continue_mcmc=False, dynesty_args=None):
 
         # Set up and save output file name.
         if output_file[-3:] != '.h5':
@@ -100,7 +83,26 @@ class Dataset:
         self.output_file = output_file
 
         # For MCMC sampling with emcee.
-        if sampler == 'mcmc':
+        if sampler == 'MCMC':
+            # For each parameter, get the prior function to be used based on
+            # the indicated prior distribution.
+            for param in self.pl_params:
+                dist = self.pl_params[param]['distribution']
+                if dist == 'fixed':
+                    self.pl_params[param]['function'] = None
+                elif dist == 'uniform':
+                    self.pl_params[param]['function'] = logprior_uniform
+                elif dist == 'loguniform':
+                    self.pl_params[param]['function'] = logprior_loguniform
+                elif dist == 'normal':
+                    self.pl_params[param]['function'] = logprior_normal
+                elif dist == 'truncated_normal':
+                    self.pl_params[param]['function'] = logprior_truncatednormal
+                else:
+                    msg = 'Unknown distribution {0} for parameter ' \
+                          '{1}'.format(dist, param)
+                    raise ValueError(msg)
+
             if continue_mcmc is False:
                 msg = 'Starting positions must be provided for MCMC sampling.'
                 assert mcmc_start is not None, msg
@@ -117,6 +119,46 @@ class Dataset:
                                      output_file=output_file,
                                      continue_run=continue_mcmc)
             self.mcmc_sampler = mcmc_sampler
+
+        # For Nested Sampling with dynesty.
+        elif sampler == 'NestedSampling':
+            # For each parameter, get the prior transform function to be used
+            # based on the indicated prior distribution.
+            ndim = 0
+            for param in self.pl_params:
+                dist = self.pl_params[param]['distribution']
+                if dist == 'fixed':
+                    self.pl_params[param]['function'] = None
+                    ndim -= 1
+                elif dist == 'uniform':
+                    self.pl_params[param]['function'] = transform_uniform
+                elif dist == 'loguniform':
+                    self.pl_params[param]['function'] = transform_loguniform
+                elif dist == 'normal':
+                    self.pl_params[param]['function'] = transform_normal
+                elif dist == 'truncated_normal':
+                    self.pl_params[param]['function'] = transform_truncatednormal
+                else:
+                    msg = 'Unknown distribution {0} for parameter ' \
+                          '{1}'.format(dist, param)
+                    raise ValueError(msg)
+                ndim += 1
+
+            # Arguments for the log likelihood function call.
+            log_like_args = (self.pl_params, self.t, self.observations,
+                             self.lc_model, self.linear_regressors,
+                             self.gp_regressors, self.ld_model)
+            ptform_kwargs = {'param_dict': self.pl_params}
+
+            nested_sampler = fit_dynesty(set_prior_transform, log_likelihood,
+                                         ndim, log_like_args=log_like_args,
+                                         dynesty_args=dynesty_args,
+                                         ptform_kwargs=ptform_kwargs)
+            self.nested_sampler = nested_sampler
+
+        else:
+            msg = 'Unrecognized sampler, {}'.format(sampler)
+            raise ValueError(msg)
 
     def get_param_dict_from_mcmc(self, method='median', burnin=None, thin=15):
         """Reformat MCMC fit outputs into the parameter dictionary format
@@ -195,6 +237,19 @@ class Dataset:
 
         plotting.make_corner_plot(self.output_file, burnin=burnin, thin=thin,
                                   labels=labels)
+
+
+def fit_dynesty(prior_transform, log_like, ndim, output_file=None,
+                log_like_args=None, ptform_kwargs=None, dynesty_args=None):
+
+    if dynesty_args is None:
+        dynesty_args = {}
+    sampler = NestedSampler(log_like, prior_transform, ndim,
+                            logl_args=log_like_args, sample='rwalk',
+                            ptform_kwargs=ptform_kwargs, **dynesty_args)
+    sampler.run_nested()
+
+    return sampler
 
 
 def fit_emcee(log_prob, output_file, initial_pos=None, continue_run=False,
@@ -307,6 +362,36 @@ def set_logprior(theta, param_dict):
     return log_prior
 
 
+def set_prior_transform(theta, param_dict):
+    """Define the prior transform based on a set of input values and prior
+    functions.
+
+    Parameters
+    ----------
+    theta : list(float)
+        List of values for each fitted parameter.
+    param_dict : dict
+        Dictionary of input parameter values and prior distributions.
+
+    Returns
+    -------
+    prior_transform : list(float)
+        Result of prior evaluation.
+    """
+
+    prior_transform = []
+    pcounter = 0
+    for param in param_dict:
+        if param_dict[param]['distribution'] == 'fixed':
+            continue
+        thisprior = param_dict[param]['function'](theta[pcounter],
+                                                  param_dict[param]['value'])
+        prior_transform.append(thisprior)
+        pcounter += 1
+
+    return prior_transform
+
+
 def log_likelihood(theta, param_dict, time, observations, lc_model,
                    linear_regressors=None, gp_regressors=None,
                    ld_model='quadratic'):
@@ -340,15 +425,16 @@ def log_likelihood(theta, param_dict, time, observations, lc_model,
 
     log_like = 0
     pcounter = 0
+    this_param = copy.deepcopy(param_dict)
     # Update the planet parameter dictionary based on current values.
-    for param in param_dict:
-        if param_dict[param]['distribution'] == 'fixed':
+    for param in this_param:
+        if this_param[param]['distribution'] == 'fixed':
             continue
-        param_dict[param]['value'] = (theta[pcounter])
+        this_param[param]['value'] = (theta[pcounter])
         pcounter += 1
 
     # Evaluate the light curve model for all instruments.
-    thismodel = LightCurveModel(param_dict, time,
+    thismodel = LightCurveModel(this_param, time,
                                 linear_regressors=linear_regressors,
                                 observations=observations,
                                 gp_regressors=gp_regressors,
@@ -359,7 +445,7 @@ def log_likelihood(theta, param_dict, time, observations, lc_model,
     for inst in observations.keys():
         dat = observations[inst]['flux']
         t = time[inst]
-        err = param_dict['sigma_{}'.format(inst)]['value']
+        err = this_param['sigma_{}'.format(inst)]['value']
         # If GP is used, evaluate log likelihood with celerite.
         if inst in thismodel.gp.keys():
             mod = thismodel.flux[inst] - thismodel.flux_decomposed[inst]['gp']['total']
@@ -412,8 +498,8 @@ def log_probability(theta, param_dict, time, observations, lc_model,
     lp = set_logprior(theta, param_dict)
     if not np.isfinite(lp):
         return -np.inf
-    ll = log_likelihood(theta, copy.deepcopy(param_dict), time, observations,
-                        lc_model, linear_regressors, gp_regressors, ld_model)
+    ll = log_likelihood(theta, param_dict, time, observations, lc_model,
+                        linear_regressors, gp_regressors, ld_model)
     if not np.isfinite(ll):
         return -np.inf
 
@@ -449,7 +535,7 @@ def logprior_normal(x, hyperparams):
     """
 
     mu, sigma = hyperparams
-    return np.log(norm.logpdf(x, loc=mu, scale=sigma))
+    return np.log(norm.pdf(x, loc=mu, scale=sigma))
 
 
 def logprior_truncatednormal(x, hyperparams):
@@ -457,5 +543,39 @@ def logprior_truncatednormal(x, hyperparams):
     """
 
     mu, sigma, low_bound, up_bound = hyperparams
-    return np.log(truncnorm.ppf(x, (low_bound - mu) / sigma,
+    return np.log(truncnorm.pdf(x, (low_bound - mu) / sigma,
                                 (up_bound - mu) / sigma, loc=mu, scale=sigma))
+
+
+def transform_uniform(x, hyperparams):
+    """Evaluate uniform prior transform.
+    """
+
+    low_bound, up_bound = hyperparams
+    return low_bound + (up_bound - low_bound) * x
+
+
+def transform_loguniform(x, hyperparams):
+    """Evaluate log-uniform prior transform.
+    """
+
+    low_bound, up_bound = hyperparams
+    return np.exp(np.log(low_bound) + x * (np.log(up_bound) - np.log(low_bound)))
+
+
+def transform_normal(x, hyperparams):
+    """Evaluate normal prior transform.
+    """
+
+    mu, sigma = hyperparams
+    return norm.ppf(x, loc=mu, scale=sigma)
+
+
+def transform_truncatednormal(x, hyperparams):
+    """Evaluate truncated normal prior transform.
+    """
+
+    mu, sigma, low_bound, up_bound = hyperparams
+    return truncnorm.ppf(x, (low_bound - mu) / sigma,
+                         (up_bound - mu) / sigma, loc=mu, scale=sigma)
+
