@@ -29,9 +29,10 @@ def fancyprint(message, msg_type='INFO'):
     print('{} - exoUPRF - {} - {}'.format(time, msg_type, message))
 
 
-def get_param_dict_from_mcmc(filename, method='median', burnin=None, thin=15):
-    """Reformat MCMC fit outputs into the parameter dictionary format
-    expected by Model.
+def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
+                            mcmc_thin=15):
+    """Reformat fit outputs from MCMC or NS into the parameter dictionary
+    format expected by Model.
 
     Parameters
     ----------
@@ -40,11 +41,11 @@ def get_param_dict_from_mcmc(filename, method='median', burnin=None, thin=15):
     method : str
         Method via which to get best fitting parameters from MCMC chains.
         Either "median" or "maxlike".
-    burnin : int
+    mcmc_burnin : int
         Number of steps to discard as burn in. Defaults to 75% of chain
-        length.
-    thin : int
-        Increment by which to thin chains.
+        length. Only for MCMC.
+    mcmc_thin : int
+        Increment by which to thin chains. Only for MCMC.
 
     Returns
     -------
@@ -54,25 +55,37 @@ def get_param_dict_from_mcmc(filename, method='median', burnin=None, thin=15):
 
     fancyprint('Importing fitted parameters from file {}.'.format(filename))
 
-    # Get MCMC chains from HDF5 file and extract best fitting parameters.
+    # Get sample chains from HDF5 file and extract best fitting parameters.
     with h5py.File(filename, 'r') as f:
-        mcmc = f['mcmc']['chain'][()]
-        # Discard burn in and thin chains.
-        if burnin is None:
-            burnin = int(0.75 * np.shape(mcmc)[0])
-        # Cut steps for burn in.
-        mcmc = mcmc[burnin:]
-        nwalkers, nchains, ndim = np.shape(mcmc)
-        # Flatten chains.
-        mcmc = mcmc.reshape(nwalkers * nchains, ndim)[::thin]
+        if 'mcmc' in list(f.keys()):
+            chain = f['mcmc']['chain'][()]
+            # Discard burn in and thin chains.
+            if mcmc_burnin is None:
+                mcmc_burnin = int(0.75 * np.shape(chain)[0])
+            # Cut steps for burn in.
+            chain = chain[mcmc_burnin:]
+            nwalkers, nchains, ndim = np.shape(chain)
+            # Flatten chains.
+            chain = chain.reshape(nwalkers * nchains, ndim)[::mcmc_thin]
+            sampler = 'mcmc'
+        elif 'ns' in list(f.keys()):
+            chain = f['ns']['chain'][()]
+            sampler = 'ns'
+        else:
+            msg = 'No MCMC or Nested Sampling results in file ' \
+                  '{}.'.format(filename)
+            raise KeyError(msg)
         # Either get maximum likelihood solution...
         if method == 'maxlike':
-            lp = f['mcmc']['log_prob'][()].flatten()[burnin:][::thin]
-            ii = np.argmax(lp)
-            bestfit = mcmc[ii]
+            if sampler == 'mcmc':
+                lp = f['mcmc']['log_prob'][()].flatten()[mcmc_burnin:][::mcmc_thin]
+                ii = np.argmax(lp)
+                bestfit = chain[ii]
+            else:
+                bestfit = chain[-1]
         # ...or take median of samples.
         elif method == 'median':
-            bestfit = np.nanmedian(mcmc, axis=0)
+            bestfit = np.nanmedian(chain, axis=0)
 
         # HDF5 groups are in alphabetical order. Reorder to match original
         # inputs.
@@ -101,19 +114,19 @@ def get_param_dict_from_mcmc(filename, method='median', burnin=None, thin=15):
     return param_dict
 
 
-def get_fit_results_from_mcmc(filename, burnin=None, thin=15):
-    """Extract MCMC posterior sample statistics (median and 1 sigma bounds)
-    for each fitted parameter.
+def get_results_from_fit(filename, mcmc_burnin=None, mcmc_thin=15):
+    """Extract posterior sample statistics (median and 1 sigma bounds) for
+    each fitted parameter.
 
     Parameters
     ----------
     filename : str
         Path to file with MCMC fit outputs.
-    burnin : int
+    mcmc_burnin : int
         Number of steps to discard as burn in. Defaults to 75% of chain
-        length.
-    thin : int
-        Increment by which to thin chains.
+        length. Only for MCMC.
+    mcmc_thin : int
+        Increment by which to thin chains. Only for MCMC.
 
     Returns
     -------
@@ -126,15 +139,22 @@ def get_fit_results_from_mcmc(filename, burnin=None, thin=15):
 
     # Get MCMC chains from HDF5 file and extract best fitting parameters.
     with h5py.File(filename, 'r') as f:
-        mcmc = f['mcmc']['chain'][()]
-        # Discard burn in and thin chains.
-        if burnin is None:
-            burnin = int(0.75 * np.shape(mcmc)[0])
-        # Cut steps for burn in.
-        mcmc = mcmc[burnin:]
-        nwalkers, nchains, ndim = np.shape(mcmc)
-        # Flatten chains.
-        mcmc = mcmc.reshape(nwalkers * nchains, ndim)[::thin]
+        if 'mcmc' in list(f.keys()):
+            chain = f['mcmc']['chain'][()]
+            # Discard burn in and thin chains.
+            if mcmc_burnin is None:
+                mcmc_burnin = int(0.75 * np.shape(chain)[0])
+            # Cut steps for burn in.
+            chain = chain[mcmc_burnin:]
+            nwalkers, nchains, ndim = np.shape(chain)
+            # Flatten chains.
+            chain = chain.reshape(nwalkers * nchains, ndim)[::mcmc_thin]
+        elif 'ns' in list(f.keys()):
+            chain = f['ns']['chain'][()]
+        else:
+            msg = 'No MCMC or Nested Sampling results in file ' \
+                  '{}.'.format(filename)
+            raise KeyError(msg)
 
         # HDF5 groups are in alphabetical order. Reorder to match original
         # inputs.
@@ -157,8 +177,8 @@ def get_fit_results_from_mcmc(filename, burnin=None, thin=15):
             # Get posterior median and 1 sigma range for fitted paramters.
             else:
                 results_dict[param] = {}
-                med = np.nanmedian(mcmc[:, pcounter], axis=0)
-                low, up = np.diff(np.nanpercentile(mcmc[:, pcounter], [16, 50, 84]))
+                med = np.nanmedian(chain[:, pcounter], axis=0)
+                low, up = np.diff(np.nanpercentile(chain[:, pcounter], [16, 50, 84]))
                 results_dict[param]['median'] = med
                 results_dict[param]['low_1sigma'] = low
                 results_dict[param]['up_1sigma'] = up

@@ -17,8 +17,6 @@ import numpy as np
 import exouprf.utils as utils
 from exouprf.utils import fancyprint
 
-# TODO: 1. Nested sampling
-
 
 class LightCurveModel:
     """Secondary exoUPRF class. Creates light curve models given a set of

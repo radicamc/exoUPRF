@@ -11,6 +11,7 @@ Functions for fitting light curve models to data.
 import copy
 from datetime import datetime
 from dynesty import NestedSampler
+from dynesty.utils import resample_equal
 import h5py
 import emcee
 import numpy as np
@@ -30,7 +31,7 @@ class Dataset:
 
     def __init__(self, input_parameters, t, lc_model_type,
                  linear_regressors=None, observations=None, gp_regressors=None,
-                 ld_model='quadratic',  silent=False, sampler='MCMC'):
+                 ld_model='quadratic', silent=False):
         """Initialize the Dataset class.
 
         Parameters
@@ -76,6 +77,25 @@ class Dataset:
 
     def fit(self, output_file, sampler='MCMC', mcmc_start=None,
             mcmc_steps=10000, continue_mcmc=False, dynesty_args=None):
+        """Run a light curve fit.
+
+        Parameters
+        ----------
+        output_file : str
+            Path to file to which to save outputs.
+        sampler : str
+            Sampling to use, either 'MCMC' or 'Nested Sampling'.
+        mcmc_start : ndarray(float)
+            Starting positions for MCMC sampling. MCMC only.
+        mcmc_steps : int
+            Number of steps to take for MCMC sampling. MCMC only.
+        continue_mcmc : bool
+            If True, continue from a previous MCMC run saved in output_file.
+            MCMC only.
+        dynesty_args : dict
+            Keyword arguments to pass to the dynesty NestedSampler instance.
+            Nested Sampling only.
+        """
 
         # Set up and save output file name.
         if output_file[-3:] != '.h5':
@@ -151,7 +171,8 @@ class Dataset:
             ptform_kwargs = {'param_dict': self.pl_params}
 
             nested_sampler = fit_dynesty(set_prior_transform, log_likelihood,
-                                         ndim, log_like_args=log_like_args,
+                                         ndim, output_file=output_file,
+                                         log_like_args=log_like_args,
                                          dynesty_args=dynesty_args,
                                          ptform_kwargs=ptform_kwargs)
             self.nested_sampler = nested_sampler
@@ -160,7 +181,8 @@ class Dataset:
             msg = 'Unrecognized sampler, {}'.format(sampler)
             raise ValueError(msg)
 
-    def get_param_dict_from_mcmc(self, method='median', burnin=None, thin=15):
+    def get_param_dict_from_fit(self, method='median', mcmc_burnin=None,
+                                mcmc_thin=15):
         """Reformat MCMC fit outputs into the parameter dictionary format
         expected by Model.
 
@@ -169,11 +191,11 @@ class Dataset:
         method : str
             Method via which to get best fitting parameters from MCMC chains.
             Either "median" or "maxlike".
-        burnin : int
+        mcmc_burnin : int
             Number of steps to discard as burn in. Defaults to 75% of chain
-            length.
-        thin : int
-            Increment by which to thin chains.
+            length. Only for MCMC.
+        mcmc_thin : int
+            Increment by which to thin chains. Only for MCMC.
 
         Returns
         -------
@@ -181,21 +203,22 @@ class Dataset:
             Dictionary of light curve model parameters.
         """
 
-        param_dict = utils.get_param_dict_from_mcmc(self.output_file,
-                                                    method=method,
-                                                    burnin=burnin, thin=thin)
+        param_dict = utils.get_param_dict_from_fit(self.output_file,
+                                                   method=method,
+                                                   mcmc_burnin=mcmc_burnin,
+                                                   mcmc_thin=mcmc_thin)
         return param_dict
 
-    def get_fit_results_from_mcmc(self, burnin=None, thin=15):
+    def get_results_from_fit(self, mcmc_burnin=None, mcmc_thin=15):
         """Extract MCMC posterior sample statistics (median and 1 sigma bounds)
         for each fitted parameter.
 
         Parameters
         ----------
-        burnin : int
+        mcmc_burnin : int
             Number of steps to discard as burn in. Defaults to 75% of chain
             length.
-        thin : int
+        mcmc_thin : int
             Increment by which to thin chains.
 
         Returns
@@ -205,9 +228,9 @@ class Dataset:
             parameter.
         """
 
-        results_dict = utils.get_fit_results_from_mcmc(self.output_file,
-                                                       burnin=burnin,
-                                                       thin=thin)
+        results_dict = utils.get_results_from_fit(self.output_file,
+                                                  mcmc_burnin=mcmc_burnin,
+                                                  mcmc_thin=mcmc_thin)
         return results_dict
 
     def plot_mcmc_chains(self, labels=None):
@@ -239,15 +262,73 @@ class Dataset:
                                   labels=labels)
 
 
-def fit_dynesty(prior_transform, log_like, ndim, output_file=None,
-                log_like_args=None, ptform_kwargs=None, dynesty_args=None):
+def fit_dynesty(prior_transform, log_like, ndim, output_file,
+                log_like_args, ptform_kwargs, dynesty_args=None):
+    """Run a light curve fit via nested sampling using the dynesty.
+
+    Parameters
+    ----------
+    prior_transform : function
+        Callable function to evaluate the prior transform.
+    log_like : function
+        Callable function to evaluate the log likelihood.
+    ndim : int
+        Number of sampling dimensions.
+    output_file : str
+        File to which to save outputs.
+    log_like_args : dict
+        Arguments for the log likelihood function.
+    ptform_kwargs : dict
+        Arguments for the prior transform function.
+    dynesty_args : dict
+        Arguments for dynesty NestedSampler instance.
+
+    Returns
+    -------
+    sampler : dynesty.nestedsamplers.MultiEllipsoidSampler
+        dynesty sampler.
+    """
 
     if dynesty_args is None:
         dynesty_args = {}
+
+    # Create all the metadata for this fit.
+    hf = h5py.File(output_file, 'w')
+    hf.attrs['Author'] = os.environ.get('USER')
+    hf.attrs['Date'] = datetime.utcnow().replace(microsecond=0).isoformat()
+    hf.attrs['Code'] = 'exoUPRF'
+    hf.attrs['Sampling'] = 'Nested Sampling'
+
+    # Add prior info.
+    inputs = log_like_args[0]
+    for i, param in enumerate(inputs.keys()):
+        g = hf.create_group('inputs/{}'.format(param))
+        g.attrs['location'] = i
+        dt = h5py.string_dtype()
+        g.create_dataset('distribution',
+                         data=inputs[param]['distribution'], dtype=dt)
+        g.create_dataset('value', data=inputs[param]['value'])
+    hf.close()
+
+    # Initialize and run nested sampler.
     sampler = NestedSampler(log_like, prior_transform, ndim,
                             logl_args=log_like_args, sample='rwalk',
                             ptform_kwargs=ptform_kwargs, **dynesty_args)
     sampler.run_nested()
+
+    # Get dynesty results dictionary.
+    results = sampler.results
+    # Reweight samples.
+    weights = np.exp(results['logwt'] - results['logz'][-1])
+    posterior_samples = resample_equal(results.samples, weights)
+
+    # Save fit info to file
+    hf = h5py.File(output_file, 'a')
+    hf.attrs['logZ'] = results['logz'][-1]
+
+    g = hf.create_group('ns')
+    g.create_dataset('chain', data=posterior_samples)
+    hf.close()
 
     return sampler
 
