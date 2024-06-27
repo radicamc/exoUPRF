@@ -1,5 +1,6 @@
 nbsphinx
 sphinx_rtd_theme
+batman-package
 celerite
 corner
 dynesty
