@@ -455,3 +455,44 @@ def simple_transit(t, pl_params, ld, ld_model='quadratic'):
     flux = m.light_curve(params)
 
     return flux
+
+
+def transit_spot_crossing(t, pl_params, ld, ld_model='quadratic'):
+    """Calculate a transit model with a star spot crossing. The star spot will
+    be modelled as a Gaussian bump in the light curve.
+
+    Parameters
+    ----------
+    t : ndarray(float)
+        Time stamps at which to calculate the light curve.
+    pl_params : dict
+        Dictionary of input parameters. Must contain the following:
+        t0, time of mid-transit
+        per, planet orbital period in days
+        rp, planet-to-star radius ratio
+        a, planet semi-major axis in units of stellar radii
+        inc, planet orbital inclination in degrees
+        ecc, planet orbital eccentricity
+        w, planet argument of periastron.
+        spot-amp, amplitude of spot crossing bump.
+        spot-pos, position of spot crossing bump.
+        spot-dur, duration of spot crossing bump.
+    ld : list(float)
+        List of limb darkening parameters.
+    ld_model : str
+        BATMAN limb darkening identifier.
+
+    Returns
+    -------
+    flux : ndarray(float)
+        Model light curve.
+    """
+
+    def gauss(x, amp, mu, sigma):
+        return amp * np.exp(-0.5 * (x - mu) ** 2 / sigma ** 2)
+
+    flux = simple_transit(t, pl_params, ld, ld_model=ld_model)
+    flux += gauss(t, pl_params['spot-amp'], pl_params['spot-pos'],
+                  pl_params['spot-dur'])
+
+    return flux
