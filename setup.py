@@ -4,8 +4,8 @@
 from setuptools import setup
 
 setup(name='exouprf',
-      version='0.0.1',
-      license='BSD 3-Clause License',
+      version='1.0.0',
+      license='MIT',
       author='Michael Radica',
       author_email='michael.radica@umontreal.ca',
       packages=['exouprf'],
@@ -19,7 +19,7 @@ setup(name='exouprf',
       classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Science/Research',
-        'License :: OSI Approved :: BSD 3-Clause License',
+        'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
         'Programming Language :: Python :: 3.10',
         ],
