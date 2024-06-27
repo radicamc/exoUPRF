@@ -1,0 +1,10 @@
+nbsphinx
+sphinx_rtd_theme
+celerite
+corner
+dynesty
+emcee
+h5py
+matplotlib
+numpy
+scipy

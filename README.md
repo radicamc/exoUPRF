@@ -6,4 +6,7 @@
 ___
 
 
-**exoUPRF** 
+**exoUPRF** is an easy to use and flexible exoplanet light curve fitting framework.
+
+## Documentation
+An installation guide, code documentation, and tutorials are included in the [exoUPRF documentation](https://exouprf.readthedocs.io/en/latest/index.html).
