@@ -30,7 +30,7 @@ def fancyprint(message, msg_type='INFO'):
 
 
 def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
-                            mcmc_thin=15):
+                            mcmc_thin=15, silent=False):
     """Reformat fit outputs from MCMC or NS into the parameter dictionary
     format expected by Model.
 
@@ -46,6 +46,8 @@ def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
         length. Only for MCMC.
     mcmc_thin : int
         Increment by which to thin chains. Only for MCMC.
+    silent : bool
+        If False, print messages.
 
     Returns
     -------
@@ -53,7 +55,9 @@ def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
         Dictionary of light curve model parameters.
     """
 
-    fancyprint('Importing fitted parameters from file {}.'.format(filename))
+    if not silent:
+        fancyprint('Importing fitted parameters from file '
+                   '{}.'.format(filename))
 
     # Get sample chains from HDF5 file and extract best fitting parameters.
     with h5py.File(filename, 'r') as f:
@@ -114,7 +118,8 @@ def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
     return param_dict
 
 
-def get_results_from_fit(filename, mcmc_burnin=None, mcmc_thin=15):
+def get_results_from_fit(filename, mcmc_burnin=None, mcmc_thin=15,
+                         silent=False):
     """Extract posterior sample statistics (median and 1 sigma bounds) for
     each fitted parameter.
 
@@ -127,6 +132,8 @@ def get_results_from_fit(filename, mcmc_burnin=None, mcmc_thin=15):
         length. Only for MCMC.
     mcmc_thin : int
         Increment by which to thin chains. Only for MCMC.
+    silent : bool
+        If False, print messages.
 
     Returns
     -------
@@ -135,7 +142,8 @@ def get_results_from_fit(filename, mcmc_burnin=None, mcmc_thin=15):
         parameter.
     """
 
-    fancyprint('Importing fit results from file {}.'.format(filename))
+    if not silent:
+        fancyprint('Importing fit results from file {}.'.format(filename))
 
     # Get MCMC chains from HDF5 file and extract best fitting parameters.
     with h5py.File(filename, 'r') as f:

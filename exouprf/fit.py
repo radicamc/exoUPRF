@@ -170,11 +170,13 @@ class Dataset:
                              self.gp_regressors, self.ld_model)
             ptform_kwargs = {'param_dict': self.pl_params}
 
+            print_progress = not self.silent
             nested_sampler = fit_dynesty(set_prior_transform, log_likelihood,
                                          ndim, output_file=output_file,
                                          log_like_args=log_like_args,
                                          dynesty_args=dynesty_args,
-                                         ptform_kwargs=ptform_kwargs)
+                                         ptform_kwargs=ptform_kwargs,
+                                         print_progress=print_progress)
             self.nested_sampler = nested_sampler
 
         else:
@@ -206,7 +208,8 @@ class Dataset:
         param_dict = utils.get_param_dict_from_fit(self.output_file,
                                                    method=method,
                                                    mcmc_burnin=mcmc_burnin,
-                                                   mcmc_thin=mcmc_thin)
+                                                   mcmc_thin=mcmc_thin,
+                                                   silent=self.silent)
         return param_dict
 
     def get_results_from_fit(self, mcmc_burnin=None, mcmc_thin=15):
@@ -230,7 +233,8 @@ class Dataset:
 
         results_dict = utils.get_results_from_fit(self.output_file,
                                                   mcmc_burnin=mcmc_burnin,
-                                                  mcmc_thin=mcmc_thin)
+                                                  mcmc_thin=mcmc_thin,
+                                                  silent=self.silent)
         return results_dict
 
     def plot_mcmc_chains(self, labels=None):
@@ -244,7 +248,8 @@ class Dataset:
 
         plotting.plot_mcmc_chains(self.output_file, labels=labels)
 
-    def make_corner_plot(self, mcmc_burnin=None, mcmc_thin=15, labels=None):
+    def make_corner_plot(self, mcmc_burnin=None, mcmc_thin=15, labels=None,
+                         outpdf=None):
         """Make a corner plot of fitted posterior distributions.
 
         Parameters
@@ -256,6 +261,8 @@ class Dataset:
             Increment by which to thin chains.
         labels : list(str)
             Fitted parameter names.
+        outpdf : PdfPages
+            File to save plot.
         """
 
         plotting.make_corner_plot(self.output_file, mcmc_burnin=mcmc_burnin,

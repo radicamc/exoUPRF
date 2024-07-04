@@ -3,7 +3,7 @@ exoUPRF's Documentation
 
 exoUPRF: the EXOplanet occUltation and Phase Regression Framework!
 
-**exoUPRF** is an easy-to-use and hackable library for fitting exoplanet light curves.
+**exoUPRF** (pronounced exo-uporf) is an easy-to-use and hackable library for fitting exoplanet light curves.
 
 .. toctree::
    :maxdepth: 2

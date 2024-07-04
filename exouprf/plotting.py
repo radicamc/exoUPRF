@@ -16,7 +16,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None):
+def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None,
+                     outpdf=None):
     """Make a corner plot of fitted posterior distributions.
 
     Parameters
@@ -30,6 +31,8 @@ def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None):
         Increment by which to thin chains. MCMC only.
     labels : list(str)
         Fitted parameter names.
+    outpdf : PdfPages
+        Path to file to save plot.
     """
 
     # Get chains from HDF5 file and extract best fitting parameters.
@@ -48,7 +51,18 @@ def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None):
             samples = f['ns']['chain'][()]
 
     # Make corner plot
-    corner.corner(samples, labels=labels, show_titles=True)
+    figure = corner.corner(samples, labels=labels, show_titles=True)
+
+
+    if outpdf is not None:
+        if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
+            outpdf.savefig(figure)
+        else:
+            figure.savefig(outpdf)
+        figure.clear()
+        plt.close(figure)
+    else:
+        plt.show()
 
 
 def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None,
@@ -70,7 +84,7 @@ def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None,
         Original data errors.
     nfit : int
         Number of fitted parameters.
-    outpdf : str
+    outpdf : PdfPages
         Path to file to save plot.
     title : str
         Plot title.

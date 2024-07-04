@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/802065450.svg)](https://zenodo.org/doi/10.5281/zenodo.12628066)
+
 <p align="center">
   <img width = "600" src="./docs/figures/logo.png"/>
 </p>
