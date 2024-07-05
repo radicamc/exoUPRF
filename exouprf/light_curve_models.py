@@ -11,8 +11,8 @@ Functions for creating light curve models.
 import batman
 import celerite
 from celerite import terms
-
 import numpy as np
+import warnings
 
 import exouprf.utils as utils
 from exouprf.utils import fancyprint
@@ -286,10 +286,12 @@ class LightCurveModel:
 
                 # Identify GP kernel to use (if any).
                 for kernel in gp_kernels.keys():
-                    if np.all(np.sort(gp_kernels[kernel]) == np.sort(gp_params)):
-                        self.gp_kernel = kernel
-                        if not self.silent:
-                            fancyprint('GP kernel {} identified.'.format(kernel))
+                    with warnings.catch_warnings():
+                        warnings.simplefilter('ignore', category=FutureWarning)
+                        if np.all(np.sort(gp_kernels[kernel]) == np.sort(gp_params)):
+                            self.gp_kernel = kernel
+                            if not self.silent:
+                                fancyprint('GP kernel {} identified.'.format(kernel))
                 if self.gp_kernel is None:
                     msg = 'No recognized GP kernel with parameters ' \
                           '{}.'.format(gp_params)
