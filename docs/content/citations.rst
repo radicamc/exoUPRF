@@ -1,7 +1,8 @@
 Citations
 ==========
 
-If you make use of this code in your work, please cite `PLACEHOLDER <xxx>`_.
+If you make use of this code in your work, please cite this `Zenodo record <https://zenodo.org/records/12628067>`_ as
+well as `PLACEHOLDER <https://zenodo.org/records/12628067>`_ for its first use.
 
 Additional Citations
 --------------------
@@ -11,6 +12,5 @@ and `dynesty <https://ui.adsabs.harvard.edu/abs/2020MNRAS.493.3132S/abstract>`_ 
 
 Lastly, you should cite the libraries upon which this code is built, namely:
 `batman <https://ui.adsabs.harvard.edu/abs/2015PASP..127.1161K/abstract>`_,
-`numpy <https://ui.adsabs.harvard.edu/abs/2020Natur.585..357H/abstract>`_,
-`scipy <https://ui.adsabs.harvard.edu/abs/2020NatMe..17..261V/abstract>`_, and
-`astropy <https://ui.adsabs.harvard.edu/abs/2013A%26A...558A..33A/abstract>`_.
+`numpy <https://ui.adsabs.harvard.edu/abs/2020Natur.585..357H/abstract>`_, and
+`scipy <https://ui.adsabs.harvard.edu/abs/2020NatMe..17..261V/abstract>`_.

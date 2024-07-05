@@ -53,7 +53,6 @@ def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None,
     # Make corner plot
     figure = corner.corner(samples, labels=labels, show_titles=True)
 
-
     if outpdf is not None:
         if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
             outpdf.savefig(figure)

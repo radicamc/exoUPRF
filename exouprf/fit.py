@@ -16,6 +16,7 @@ import h5py
 import emcee
 import numpy as np
 import os
+from pathlib import Path
 from scipy.stats import norm, truncnorm
 
 from exouprf.light_curve_models import LightCurveModel
@@ -101,6 +102,10 @@ class Dataset:
         if output_file[-3:] != '.h5':
             output_file += '.h5'
         self.output_file = output_file
+        # Check to see whether output directory exists and create it if not.
+        outdir = os.path.dirname(self.output_file)
+        if not os.path.exists(outdir):
+            Path(outdir).mkdir(parents=True, exist_ok=True)
 
         # For MCMC sampling with emcee.
         if sampler == 'MCMC':
@@ -170,13 +175,12 @@ class Dataset:
                              self.gp_regressors, self.ld_model)
             ptform_kwargs = {'param_dict': self.pl_params}
 
-            print_progress = not self.silent
             nested_sampler = fit_dynesty(set_prior_transform, log_likelihood,
                                          ndim, output_file=output_file,
                                          log_like_args=log_like_args,
                                          dynesty_args=dynesty_args,
                                          ptform_kwargs=ptform_kwargs,
-                                         print_progress=print_progress)
+                                         silent=self.silent)
             self.nested_sampler = nested_sampler
 
         else:
@@ -266,11 +270,12 @@ class Dataset:
         """
 
         plotting.make_corner_plot(self.output_file, mcmc_burnin=mcmc_burnin,
-                                  mcmc_thin=mcmc_thin, labels=labels)
+                                  mcmc_thin=mcmc_thin, labels=labels,
+                                  outpdf=outpdf)
 
 
 def fit_dynesty(prior_transform, log_like, ndim, output_file,
-                log_like_args, ptform_kwargs, dynesty_args=None):
+                log_like_args, ptform_kwargs, dynesty_args=None, silent=False):
     """Run a light curve fit via nested sampling using the dynesty.
 
     Parameters
@@ -289,6 +294,8 @@ def fit_dynesty(prior_transform, log_like, ndim, output_file,
         Arguments for the prior transform function.
     dynesty_args : dict
         Arguments for dynesty NestedSampler instance.
+    silent : bool
+        If True, do not show progress updates.
 
     Returns
     -------
@@ -321,7 +328,7 @@ def fit_dynesty(prior_transform, log_like, ndim, output_file,
     sampler = NestedSampler(log_like, prior_transform, ndim,
                             logl_args=log_like_args, sample='rwalk',
                             ptform_kwargs=ptform_kwargs, **dynesty_args)
-    sampler.run_nested()
+    sampler.run_nested(print_progress=not silent)
 
     # Get dynesty results dictionary.
     results = sampler.results
