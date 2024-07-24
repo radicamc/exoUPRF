@@ -330,7 +330,7 @@ class LightCurveModel:
                 except Exception as err:
                     if str(err) == 'failed to factorize or solve matrix':
                         self.flux_decomposed[inst]['total'] = -np.inf*self.flux[inst]
-                        return
+                        continue
                     else:
                         raise err
 
