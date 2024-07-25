@@ -14,6 +14,7 @@ from dynesty import NestedSampler
 from dynesty.utils import resample_equal
 import h5py
 import emcee
+from multiprocessing import Pool
 import numpy as np
 import os
 from pathlib import Path
@@ -76,7 +77,7 @@ class Dataset:
         self.flux = None
         self.output_file = None
 
-    def fit(self, output_file, sampler='MCMC', mcmc_start=None,
+    def fit(self, output_file, sampler='MCMC', mcmc_start=None, mcmc_ncores=1,
             mcmc_steps=10000, continue_mcmc=False, dynesty_args=None):
         """Run a light curve fit.
 
@@ -90,6 +91,8 @@ class Dataset:
             Starting positions for MCMC sampling. MCMC only.
         mcmc_steps : int
             Number of steps to take for MCMC sampling. MCMC only.
+        mcmc_ncores : int
+            Number of cores for multiprocessing. MCMC only.
         continue_mcmc : bool
             If True, continue from a previous MCMC run saved in output_file.
             MCMC only.
@@ -142,7 +145,8 @@ class Dataset:
                                      silent=self.silent, mcmc_steps=mcmc_steps,
                                      log_probability_args=log_prob_args,
                                      output_file=output_file,
-                                     continue_run=continue_mcmc)
+                                     continue_run=continue_mcmc,
+                                     ncores=mcmc_ncores)
             self.mcmc_sampler = mcmc_sampler
 
         # For Nested Sampling with dynesty.
@@ -370,7 +374,8 @@ def fit_dynesty(prior_transform, log_like, ndim, output_file,
 
 
 def fit_emcee(log_prob, output_file, initial_pos=None, continue_run=False,
-              silent=False, mcmc_steps=10000, log_probability_args=None):
+              silent=False, mcmc_steps=10000, log_probability_args=None,
+              ncores=1):
     """Run a light curve fit via MCMC using the emcee sampler.
 
     Parameters
@@ -390,6 +395,8 @@ def fit_emcee(log_prob, output_file, initial_pos=None, continue_run=False,
         Number of MCMC steps before stopping.
     log_probability_args : tuple
         Arguments for the passed log_prob function.
+    ncores : int
+        Number of cores to use for multiprocessing.
 
     Returns
     -------
@@ -442,9 +449,11 @@ def fit_emcee(log_prob, output_file, initial_pos=None, continue_run=False,
         fancyprint('{} steps already completed.'.format(backend.iteration))
 
     # Do the sampling.
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob, backend=backend,
-                                    args=log_probability_args)
-    output = sampler.run_mcmc(initial_pos, mcmc_steps, progress=not silent)
+    with Pool(processes=ncores) as pool:
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob,
+                                        backend=backend, pool=pool,
+                                        args=log_probability_args)
+        output = sampler.run_mcmc(initial_pos, mcmc_steps, progress=not silent)
 
     return sampler
 
