@@ -188,7 +188,7 @@ class Dataset:
             raise ValueError(msg)
 
     def get_param_dict_from_fit(self, method='median', mcmc_burnin=None,
-                                mcmc_thin=15):
+                                mcmc_thin=15, drop_chains=None):
         """Reformat MCMC fit outputs into the parameter dictionary format
         expected by Model.
 
@@ -202,6 +202,8 @@ class Dataset:
             length. Only for MCMC.
         mcmc_thin : int
             Increment by which to thin chains. Only for MCMC.
+        drop_chains : list(int), None
+            Indices of chains to drop.
 
         Returns
         -------
@@ -213,10 +215,12 @@ class Dataset:
                                                    method=method,
                                                    mcmc_burnin=mcmc_burnin,
                                                    mcmc_thin=mcmc_thin,
-                                                   silent=self.silent)
+                                                   silent=self.silent,
+                                                   drop_chains=drop_chains)
         return param_dict
 
-    def get_results_from_fit(self, mcmc_burnin=None, mcmc_thin=15):
+    def get_results_from_fit(self, mcmc_burnin=None, mcmc_thin=15,
+                             drop_chains=None):
         """Extract MCMC posterior sample statistics (median and 1 sigma bounds)
         for each fitted parameter.
 
@@ -227,6 +231,8 @@ class Dataset:
             length.
         mcmc_thin : int
             Increment by which to thin chains.
+        drop_chains : list(int), None
+            Indices of chains to drop.
 
         Returns
         -------
@@ -238,22 +244,33 @@ class Dataset:
         results_dict = utils.get_results_from_fit(self.output_file,
                                                   mcmc_burnin=mcmc_burnin,
                                                   mcmc_thin=mcmc_thin,
-                                                  silent=self.silent)
+                                                  silent=self.silent,
+                                                  drop_chains=drop_chains)
         return results_dict
 
-    def plot_mcmc_chains(self, labels=None):
+    def plot_mcmc_chains(self, labels=None, log_params=None,
+                         highlight_chains=None, drop_chains=None):
         """Plot MCMC chains.
 
         Parameters
         ----------
         labels : list(str)
             Fitted parameter names.
+        log_params : list(int), None
+            Indices of parameters to plot in log-space.
+        highlight_chains : list(int), None
+            Indices of chains to highlight.
+        drop_chains : list(int), None
+            Indices of chains to drop.
         """
 
-        plotting.plot_mcmc_chains(self.output_file, labels=labels)
+        plotting.plot_mcmc_chains(self.output_file, labels=labels,
+                                  log_params=log_params,
+                                  highlight_chains=highlight_chains,
+                                  drop_chains=drop_chains)
 
     def make_corner_plot(self, mcmc_burnin=None, mcmc_thin=15, labels=None,
-                         outpdf=None):
+                         outpdf=None, log_params=None, drop_chains=None):
         """Make a corner plot of fitted posterior distributions.
 
         Parameters
@@ -267,11 +284,16 @@ class Dataset:
             Fitted parameter names.
         outpdf : PdfPages
             File to save plot.
+        log_params : list(int), None
+            Indices of parameters to plot in log-space.
+        drop_chains : list(int), None
+            Indices of chains to drop.
         """
 
         plotting.make_corner_plot(self.output_file, mcmc_burnin=mcmc_burnin,
                                   mcmc_thin=mcmc_thin, labels=labels,
-                                  outpdf=outpdf)
+                                  outpdf=outpdf, log_params=log_params,
+                                  drop_chains=drop_chains)
 
 
 def fit_dynesty(prior_transform, log_like, ndim, output_file,

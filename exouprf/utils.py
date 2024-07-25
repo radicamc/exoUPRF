@@ -30,7 +30,7 @@ def fancyprint(message, msg_type='INFO'):
 
 
 def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
-                            mcmc_thin=15, silent=False):
+                            mcmc_thin=15, silent=False, drop_chains=None):
     """Reformat fit outputs from MCMC or NS into the parameter dictionary
     format expected by Model.
 
@@ -48,6 +48,8 @@ def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
         Increment by which to thin chains. Only for MCMC.
     silent : bool
         If False, print messages.
+    drop_chains : list(int), None
+        Indices of chains to drop.
 
     Returns
     -------
@@ -68,6 +70,10 @@ def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
                 mcmc_burnin = int(0.75 * np.shape(chain)[0])
             # Cut steps for burn in.
             chain = chain[mcmc_burnin:]
+            # Drop chains if necessary.
+            if drop_chains is not None:
+                drop_chains = np.atleast_1d(drop_chains)
+                chain = np.delete(chain, drop_chains, axis=1)
             nwalkers, nchains, ndim = np.shape(chain)
             # Flatten chains.
             chain = chain.reshape(nwalkers * nchains, ndim)[::mcmc_thin]
@@ -119,7 +125,7 @@ def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
 
 
 def get_results_from_fit(filename, mcmc_burnin=None, mcmc_thin=15,
-                         silent=False):
+                         silent=False, drop_chains=None):
     """Extract posterior sample statistics (median and 1 sigma bounds) for
     each fitted parameter.
 
@@ -134,6 +140,8 @@ def get_results_from_fit(filename, mcmc_burnin=None, mcmc_thin=15,
         Increment by which to thin chains. Only for MCMC.
     silent : bool
         If False, print messages.
+    drop_chains : list(int), None
+        Indices of chains to drop.
 
     Returns
     -------
@@ -154,6 +162,10 @@ def get_results_from_fit(filename, mcmc_burnin=None, mcmc_thin=15,
                 mcmc_burnin = int(0.75 * np.shape(chain)[0])
             # Cut steps for burn in.
             chain = chain[mcmc_burnin:]
+            # Drop chains if necessary.
+            if drop_chains is not None:
+                drop_chains = np.atleast_1d(drop_chains)
+                chain = np.delete(chain, drop_chains, axis=1)
             nwalkers, nchains, ndim = np.shape(chain)
             # Flatten chains.
             chain = chain.reshape(nwalkers * nchains, ndim)[::mcmc_thin]
