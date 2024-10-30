@@ -13,7 +13,82 @@ import h5py
 import matplotlib.backends.backend_pdf
 from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
+
+
+def make_allan_plot(residuals, integration_time=None):
+    """Make an allan variance plot for a given set of residuals.
+    Original routine by Hannah Wakeford, adapted by MCR.
+
+    Parameters
+    ----------
+    residuals : list
+        List of arrays of residuals to bin.
+    integration_time : float
+        Integration time for the observations.
+    """
+
+    # Bin data into multiple bin sizes
+    maxnbins = len(residuals[0]) / 4
+    binstep = 1
+    # Create an array of the bin sizes in integrations.
+    binz = np.arange(1, maxnbins + binstep, step=binstep, dtype=int)
+
+    f, ax1 = plt.subplots(facecolor='white', figsize=(6, 4))
+    # Loop over each pack of residuals in the input.
+    for r in range(len(residuals)):
+        thisres = residuals[r]
+
+        # Initialize some storage arrays.
+        nbins = np.zeros(len(binz), dtype=int)
+        root_mean_square = np.zeros(len(binz))
+
+        # Loop over each bin size and bin the requisite number of integrations.
+        for i in range(len(binz)):
+            # Total number of bins binning binz[i] integrations per bin
+            nbins[i] = int(np.floor(thisres.size / binz[i]))
+            bindata = np.zeros(nbins[i], dtype=float)
+
+            # Do the binning.
+            for j in range(nbins[i]):
+                bindata[j] = np.nanmean(
+                    thisres[j * binz[i]: (j + 1) * binz[i]])
+
+            # Get rms.
+            root_mean_square[i] = np.sqrt(np.nanmean(bindata ** 2))
+
+        # Get expected white noise trend.
+        expected_noise = (np.nanstd(thisres) / np.sqrt(binz)) * np.sqrt(nbins / (nbins - 1))
+
+        # Plot up the binned statistic against the expected statistic.
+        ax1.plot(binz, root_mean_square * 1e6)
+        ax1.plot(binz, expected_noise * 1e6, color='black', ls='--')
+
+    # Plot formatting
+    ax1.set_xlabel('Bin Size [integrations]', fontsize=12)
+    ax1.set_ylabel('RMS [ppm]', fontsize=12)
+    ax1.set_xscale('log')
+    ax1.set_yscale('log')
+    ax1.tick_params(axis='both', which='major', labelsize=10)
+    ax1.xaxis.set_major_formatter(mticker.ScalarFormatter())
+    ax1.yaxis.set_major_formatter(mticker.ScalarFormatter())
+    ax1.yaxis.set_minor_formatter(mticker.ScalarFormatter())
+
+    # Now with time as the axis
+    if integration_time is not None:
+        ax2 = ax1.twiny()
+        ax2.plot(binz * integration_time, root_mean_square * 1e6, lw=0)
+        ax2.set_yscale('log')
+        ax2.set_xscale('log')
+        ax2.set_xlabel('Bin Size [mins]', fontsize=12)
+        ax2.xaxis.set_major_formatter(mticker.ScalarFormatter())
+        ax2.yaxis.set_major_formatter(mticker.ScalarFormatter())
+        ax2.yaxis.set_minor_formatter(mticker.ScalarFormatter())
+
+    plt.show()
+
+    return
 
 
 def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None,
