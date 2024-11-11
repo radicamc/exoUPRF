@@ -88,7 +88,7 @@ def make_allan_plot(residuals, integration_time=None, labels=None):
     # Now with time as the x-axis.
     if integration_time is not None:
         ax2 = ax1.twiny()
-        ax2.plot(bins * integration_time, root_mean_square * 1e6, lw=0)
+        ax2.plot(bins * integration_time, rms*1e6, lw=0)
         ax2.set_yscale('log')
         ax2.set_xscale('log')
         ax2.set_xlabel('Bin Size [mins]', fontsize=12)
