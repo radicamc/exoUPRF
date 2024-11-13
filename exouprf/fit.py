@@ -78,7 +78,8 @@ class Dataset:
         self.output_file = None
 
     def fit(self, output_file, sampler='MCMC', mcmc_start=None, mcmc_ncores=1,
-            mcmc_steps=10000, continue_mcmc=False, dynesty_args=None):
+            mcmc_steps=10000, continue_mcmc=False, dynesty_args=None,
+            force_redo=False):
         """Run a light curve fit.
 
         Parameters
@@ -99,6 +100,8 @@ class Dataset:
         dynesty_args : dict
             Keyword arguments to pass to the dynesty NestedSampler instance.
             Nested Sampling only.
+        force_redo : bool
+            If True, will overwrite previous output files.
         """
 
         # Set up and save output file name.
@@ -109,6 +112,13 @@ class Dataset:
         outdir = os.path.dirname(self.output_file)
         if not os.path.exists(outdir):
             Path(outdir).mkdir(parents=True, exist_ok=True)
+        else:
+            if force_redo is True:
+                fancyprint('force_redo=True, existing file {} will be '
+                           'overwritten.'.format(output_file), msg_type='WARNING')
+            else:
+                raise ValueError('Output file already {} exists and '
+                                 'force_redo=False.'.format(output_file))
 
         # For MCMC sampling with emcee.
         if sampler == 'MCMC':
