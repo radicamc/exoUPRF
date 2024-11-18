@@ -33,7 +33,8 @@ class Dataset:
 
     def __init__(self, input_parameters, t, lc_model_type,
                  linear_regressors=None, observations=None, gp_regressors=None,
-                 ld_model='quadratic', silent=False):
+                 ld_model='quadratic', silent=False,
+                 custom_lc_functions=None):
         """Initialize the Dataset class.
 
         Parameters
@@ -76,6 +77,7 @@ class Dataset:
         self.flux_decomposed = None
         self.flux = None
         self.output_file = None
+        self.custom_lc_functions = custom_lc_functions
 
     def fit(self, output_file, sampler='MCMC', mcmc_start=None, mcmc_ncores=1,
             mcmc_steps=10000, continue_mcmc=False, dynesty_args=None,
@@ -112,7 +114,7 @@ class Dataset:
         outdir = os.path.dirname(self.output_file)
         if not os.path.exists(outdir):
             Path(outdir).mkdir(parents=True, exist_ok=True)
-        else:
+        if os.path.exists(self.output_file):
             if force_redo is True:
                 fancyprint('force_redo=True, existing file {} will be '
                            'overwritten.'.format(output_file), msg_type='WARNING')
@@ -148,7 +150,8 @@ class Dataset:
             # Arguments for the log probability function call.
             log_prob_args = (self.pl_params, self.t, self.observations,
                              self.lc_model, self.linear_regressors,
-                             self.gp_regressors, self.ld_model)
+                             self.gp_regressors, self.ld_model,
+                             self.custom_lc_functions)
 
             # Initialize and run the emcee sampler.
             mcmc_sampler = fit_emcee(log_probability, initial_pos=mcmc_start,
@@ -186,7 +189,8 @@ class Dataset:
             # Arguments for the log likelihood function call.
             log_like_args = (self.pl_params, self.t, self.observations,
                              self.lc_model, self.linear_regressors,
-                             self.gp_regressors, self.ld_model)
+                             self.gp_regressors, self.ld_model,
+                             self.custom_lc_functions)
             ptform_kwargs = {'param_dict': self.pl_params}
 
             nested_sampler = fit_dynesty(set_prior_transform, log_likelihood,
@@ -530,7 +534,7 @@ def set_prior_transform(theta, param_dict):
 
 def log_likelihood(theta, param_dict, time, observations, lc_model,
                    linear_regressors=None, gp_regressors=None,
-                   ld_model='quadratic'):
+                   ld_model='quadratic', custom_lc_function=None):
     """Evaluate the log likelihood for a dataset and a given set of model
     parameters.
 
@@ -575,7 +579,8 @@ def log_likelihood(theta, param_dict, time, observations, lc_model,
                                 observations=observations,
                                 gp_regressors=gp_regressors,
                                 ld_model=ld_model, silent=True)
-    thismodel.compute_lightcurves(lc_model_type=lc_model)
+    thismodel.compute_lightcurves(lc_model_type=lc_model,
+                                  lc_model_functions=custom_lc_function)
 
     # For each instrument, calculate the likelihood.
     for inst in observations.keys():
@@ -602,7 +607,7 @@ def log_likelihood(theta, param_dict, time, observations, lc_model,
 
 def log_probability(theta, param_dict, time, observations, lc_model,
                     linear_regressors=None, gp_regressors=None,
-                    ld_model='quadratic'):
+                    ld_model='quadratic', custom_lc_function=None):
     """Evaluate the log probability for a dataset and a given set of model
     parameters.
 
@@ -635,7 +640,8 @@ def log_probability(theta, param_dict, time, observations, lc_model,
     if not np.isfinite(lp):
         return -np.inf
     ll = log_likelihood(theta, param_dict, time, observations, lc_model,
-                        linear_regressors, gp_regressors, ld_model)
+                        linear_regressors, gp_regressors, ld_model,
+                        custom_lc_function)
     if not np.isfinite(ll):
         return -np.inf
 

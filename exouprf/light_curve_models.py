@@ -151,7 +151,7 @@ class LightCurveModel:
         for inst in self.t.keys():
             self.t[inst] = self.t[inst].astype(np.float64)
 
-    def compute_lightcurves(self, lc_model_type):
+    def compute_lightcurves(self, lc_model_type, lc_model_functions=None):
         """Given a set of input parameters, compute a light curve model.
 
         Parameters
@@ -239,6 +239,17 @@ class LightCurveModel:
                     # parameters.
                     pl_flux = simple_eclipse(self.t[inst],
                                              self.pl_params[inst][pl])
+                elif lc_model_type[inst][pl] == 'custom-transit':
+                    # For custom transit models.
+                    custom_call = lc_model_functions[inst][pl]
+                    pl_flux = custom_call(self.t[inst],
+                                          self.pl_params[inst][pl],
+                                          ld_params, ld_model=ld_model)
+                elif lc_model_type[inst][pl] == 'custom-eclipse':
+                    # For custom eclipse models.
+                    custom_call = lc_model_functions[inst][pl]
+                    pl_flux = custom_call(self.t[inst],
+                                          self.pl_params[inst][pl])
                 else:
                     msg = 'Unknown light curve model type ' \
                           '{}.'.format(lc_model_type[inst][pl])
@@ -455,6 +466,43 @@ def simple_transit(t, pl_params, ld, ld_model='quadratic'):
 
     m = batman.TransitModel(params, t)
     flux = m.light_curve(params)
+
+    return flux
+
+
+def transit_quad_curvature(t, pl_params, ld, ld_model='quadratic'):
+    """Calculate a transit model with quadratic curvature in the baseline with
+    variable amplitude and offset from mid-transit.
+
+        Parameters
+        ----------
+        t : ndarray(float)
+            Time stamps at which to calculate the light curve.
+        pl_params : dict
+            Dictionary of input parameters. Must contain the following:
+            t0, time of mid-transit
+            per, planet orbital period in days
+            rp, planet-to-star radius ratio
+            a, planet semi-major axis in units of stellar radii
+            inc, planet orbital inclination in degrees
+            ecc, planet orbital eccentricity
+            w, planet argument of periastron.
+            curv-amp, amplitude of curvature.
+            curv-pos, position of curvature mid-point.
+        ld : list(float)
+            List of limb darkening parameters.
+        ld_model : str
+            BATMAN limb darkening identifier.
+
+        Returns
+        -------
+        flux : ndarray(float)
+            Model light curve.
+        """
+
+    flux = simple_transit(t, pl_params, ld, ld_model=ld_model)
+    offset = pl_params['t0'] - pl_params['curv-off']
+    flux += pl_params['curv-amp'] * (t - offset)**2
 
     return flux
 
