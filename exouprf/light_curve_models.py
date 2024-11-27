@@ -119,8 +119,13 @@ class LightCurveModel:
             param_split = param.split('_')
             # First chunk is always parameter key.
             prop = param_split[0]
+            # Zero point -- property of instrument
+            if prop == 'zero':
+                for inst in self.multiplicity.keys():
+                    if inst in param_split:
+                        self.pl_params[inst][prop] = input_parameters[param]['value']
             # Error inflation parameter -- property of instrument.
-            if prop == 'sigma':
+            elif prop == 'sigma':
                 for inst in self.multiplicity.keys():
                     if inst in param_split:
                         self.pl_params[inst][prop] = input_parameters[param]['value']
@@ -258,6 +263,9 @@ class LightCurveModel:
                 self.flux_decomposed[inst]['pl'][pl] = pl_flux
                 # Add contribution of planet to the total astrophysical model.
                 self.flux[inst] -= (1 - pl_flux)
+            # Add in the zero point for a given light curve.
+            self.flux[inst] += self.pl_params[inst]['zero']
+
             self.flux_decomposed[inst]['pl']['total'] = np.copy(self.flux[inst])
 
             # === Linear Models ===
