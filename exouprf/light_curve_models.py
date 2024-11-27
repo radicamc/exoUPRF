@@ -293,7 +293,7 @@ class LightCurveModel:
 
             # === GP Models ===
             # Acceptable GP kernels.
-            gp_kernels = {'SHO-gran': ['GP_ag', 'GP_bg', 'GP_Q'],
+            gp_kernels = {'SHO-gran': ['GP_ag', 'GP_bg'],
                           'SHO': ['GP_S0', 'GP_omega0', 'GP_Q'],
                           'Matern 3/2': ['GP_sigma', 'GP_rho']}
             if use_gp is True:
@@ -323,7 +323,7 @@ class LightCurveModel:
                     # Convert from granulation parameters to SHO parameters.
                     omega = 2 * np.pi * self.pl_params[inst]['GP_bg']
                     s0 = self.pl_params[inst]['GP_ag']**2 / omega / np.sqrt(2)
-                    q = self.pl_params[inst]['GP_Q']
+                    q = 1/np.sqrt(2)
                     kernel = terms.SHOTerm(log_S0=np.log(s0),
                                            log_omega0=np.log(omega),
                                            log_Q=np.log(q))
