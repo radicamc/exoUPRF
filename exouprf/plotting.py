@@ -17,7 +17,8 @@ import matplotlib.ticker as mticker
 import numpy as np
 
 
-def make_allan_plot(residuals, integration_time=None, labels=None):
+def make_allan_plot(residuals, integration_time=None, labels=None,
+                    just_calculate=False):
     """Make an allan variance plot for a given set of residuals.
     Original routine by Hannah Wakeford, adapted by MCR.
 
@@ -30,6 +31,9 @@ def make_allan_plot(residuals, integration_time=None, labels=None):
     labels : list(str)
         List of labels corresponding to each of the passed residuals. Must
         have the same size as residuals.
+    just_calculate : bool
+        If True, don't plot anything. Just calculate the binning statistics
+        and return them.
     """
 
     if labels is not None:
@@ -41,7 +45,8 @@ def make_allan_plot(residuals, integration_time=None, labels=None):
     # Create an array of the bin sizes in integrations.
     bins = np.arange(1, maxnbins + binstep, step=binstep, dtype=int)
 
-    f, ax1 = plt.subplots(facecolor='white', figsize=(6, 4))
+    if just_calculate is False:
+        f, ax1 = plt.subplots(facecolor='white', figsize=(6, 4))
     # Loop over each pack of residuals in the input.
     for r in range(len(residuals)):
         thisres = residuals[r]
@@ -67,38 +72,42 @@ def make_allan_plot(residuals, integration_time=None, labels=None):
         phot_noise = (np.nanstd(thisres) / np.sqrt(bins)) * np.sqrt(nbins / (nbins-1))
 
         # Plot up the binned statistic against the expected statistic.
+        if just_calculate is False:
+            if labels is not None:
+                ax1.plot(bins, rms*1e6, label=labels[r])
+            else:
+                ax1.plot(bins, rms*1e6)
+            ax1.plot(bins, phot_noise*1e6, color='black', ls='--')
+
+    if just_calculate is False:
+        # Plot formatting.
+        ax1.set_xlabel('Bin Size [integrations]', fontsize=12)
+        ax1.set_ylabel('RMS [ppm]', fontsize=12)
+        ax1.set_xscale('log')
+        ax1.set_yscale('log')
+        ax1.tick_params(axis='both', which='major', labelsize=10)
+        ax1.xaxis.set_major_formatter(mticker.ScalarFormatter())
+        ax1.yaxis.set_major_formatter(mticker.ScalarFormatter())
+        ax1.yaxis.set_minor_formatter(mticker.ScalarFormatter())
         if labels is not None:
-            ax1.plot(bins, rms*1e6, label=labels[r])
-        else:
-            ax1.plot(bins, rms*1e6)
-        ax1.plot(bins, phot_noise*1e6, color='black', ls='--')
+            ax1.legend()
 
-    # Plot formatting.
-    ax1.set_xlabel('Bin Size [integrations]', fontsize=12)
-    ax1.set_ylabel('RMS [ppm]', fontsize=12)
-    ax1.set_xscale('log')
-    ax1.set_yscale('log')
-    ax1.tick_params(axis='both', which='major', labelsize=10)
-    ax1.xaxis.set_major_formatter(mticker.ScalarFormatter())
-    ax1.yaxis.set_major_formatter(mticker.ScalarFormatter())
-    ax1.yaxis.set_minor_formatter(mticker.ScalarFormatter())
-    if labels is not None:
-        ax1.legend()
+        # Now with time as the x-axis.
+        if integration_time is not None:
+            ax2 = ax1.twiny()
+            ax2.plot(bins * integration_time, rms*1e6, lw=0)
+            ax2.set_yscale('log')
+            ax2.set_xscale('log')
+            ax2.set_xlabel('Bin Size [mins]', fontsize=12)
+            ax2.xaxis.set_major_formatter(mticker.ScalarFormatter())
+            ax2.yaxis.set_major_formatter(mticker.ScalarFormatter())
+            ax2.yaxis.set_minor_formatter(mticker.ScalarFormatter())
 
-    # Now with time as the x-axis.
-    if integration_time is not None:
-        ax2 = ax1.twiny()
-        ax2.plot(bins * integration_time, rms*1e6, lw=0)
-        ax2.set_yscale('log')
-        ax2.set_xscale('log')
-        ax2.set_xlabel('Bin Size [mins]', fontsize=12)
-        ax2.xaxis.set_major_formatter(mticker.ScalarFormatter())
-        ax2.yaxis.set_major_formatter(mticker.ScalarFormatter())
-        ax2.yaxis.set_minor_formatter(mticker.ScalarFormatter())
+        plt.show()
 
-    plt.show()
-
-    return
+        return
+    else:
+        return rms, bins, phot_noise
 
 
 def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None,
