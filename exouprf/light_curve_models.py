@@ -19,34 +19,30 @@ from exouprf.utils import fancyprint
 
 
 class LightCurveModel:
-    """Secondary exoUPRF class. Creates light curve models given a set of
-    input parameters and light curve model function.
+    """Secondary exoUPRF class. Creates light curve models given a set of input parameters and
+    light curve model function.
     """
 
-    def __init__(self, input_parameters, t, linear_regressors=None,
-                 observations=None, gp_regressors=None, ld_model='quadratic',
-                 silent=False):
+    def __init__(self, input_parameters, t, linear_regressors=None, observations=None,
+                 gp_regressors=None, ld_model='quadratic', silent=False):
         """Initialize the Model class.
 
         Parameters
         ----------
         input_parameters : dict
-            Dictionary of input parameters and values. Should have form
-            {parameter: value}.
+            Dictionary of input parameters and values. Should have form {parameter: value}.
         t : dict
-            Dictionary of timestamps for each instrument. Should have form
-            {instrument: times}.
+            Dictionary of timestamps for each instrument. Should have form {instrument: times}.
         linear_regressors : dict
-            Dictionary of regressors for linear models. Should have form
-            {instrument: regressors}.
+            Dictionary of regressors for linear models. Should have form {instrument: regressors}.
         observations : dict
             Dictionary of observed data. Should have form
-            {instrument: {flux: values, flux_err: values}}
+            {instrument: {flux: values, flux_err: values}}.
         gp_regressors : dict
-            Dictionary of regressors for Gaussian Process models. Should have
-            form {instrument: regressors}.
+            Dictionary of regressors for Gaussian Process models. Should have form
+            {instrument: regressors}.
         ld_model : str
-            Limb darkening model identifier
+            Limb darkening model identifier.
         silent : bool
             If True, do not print any outputs.
         """
@@ -65,14 +61,12 @@ class LightCurveModel:
         self.flux = {}
         self.gp = {}
 
-        # Unpack the input parameter dictionary into a form more amenable to
-        # create models.
+        # Unpack the input parameter dictionary into a form more amenable to create models.
         # Go through input params once to get number of different instruments.
         self.multiplicity = {}
         for param in input_parameters.keys():
             param_split = param.split('_')
-            # Length of param_split should be at least 3 -- key name, planet
-            # number, and instrument.
+            # Length of param_split should be at least 3 -- key name, planet number, and instrument.
             # First chunk is always parameter key, so start at chunk number 2.
             for chunk in param_split[1:]:
                 # Ignore planet identifiers.
@@ -86,8 +80,7 @@ class LightCurveModel:
                     self.multiplicity[chunk] = []
                     # Make sure time axis is passed for each instrument.
                     if chunk not in t.keys():
-                        msg = 'No timestamps passed for instrument ' \
-                              '{}'.format(chunk)
+                        msg = 'No timestamps passed for instrument {}'.format(chunk)
                         raise ValueError(msg)
 
         # Now go through a second time to get the number of planets.
@@ -96,16 +89,15 @@ class LightCurveModel:
             for inst in self.multiplicity.keys():
                 if inst in param_split:
                     for chunk in param_split[1:]:
-                        # If it is a new planet identifier, increase
-                        # multiplicity.
+                        # If it is a new planet identifier, increase multiplicity.
                         if chunk[0] == 'p' and chunk[1].isdigit():
                             if chunk not in self.multiplicity[inst]:
                                 self.multiplicity[inst].append(chunk)
 
         for inst in self.multiplicity.keys():
             if not self.silent:
-                fancyprint('Importing parameters for {0} planet(s) from '
-                           'instrument {1}.'.format(len(self.multiplicity[inst]), inst))
+                fancyprint('Importing parameters for {0} planet(s) from instrument {1}.'
+                           .format(len(self.multiplicity[inst]), inst))
 
         # Set up storage dictionaries for properties of each planet.
         self.pl_params = {}
@@ -162,10 +154,9 @@ class LightCurveModel:
         Parameters
         ----------
         lc_model_type : dict
-            Dictionary of light curve model types for each instrument and
-            planet. Should have form {inst: {pl: model}}. "transit" and
-            "eclipse" models are supported by default. Custom models are
-            possible, and, in this case, model should be the call to the
+            Dictionary of light curve model types for each instrument and planet. Should have
+            form {inst: {pl: model}}. "transit" and "eclipse" models are supported by default.
+            Custom models are possible, and, in this case, model should be the call to the
             custom model function.
         """
 
@@ -174,9 +165,8 @@ class LightCurveModel:
 
         # Individually treat each instrument.
         for inst in self.multiplicity.keys():
-            # For each instrument, model will be decomposed into astrophysical,
-            # linear model, and GP components, and stored in a dictionary for
-            # easy interpretation.
+            # For each instrument, model will be decomposed into astrophysical, linear model, and
+            # GP components, and stored in a dictionary for easy interpretation.
             self.flux_decomposed[inst] = {}
             self.flux_decomposed[inst]['pl'] = {}
             self.flux[inst] = np.ones_like(self.t[inst])
@@ -192,8 +182,7 @@ class LightCurveModel:
                 if param[:5] == 'theta':
                     # Ensure that there are appropriate regressors.
                     if self.linear_regressors is None or inst not in self.linear_regressors.keys():
-                        msg = 'No regressors passed for instrument ' \
-                              '{}'.format(inst)
+                        msg = 'No regressors passed for instrument {}'.format(inst)
                         raise ValueError(msg)
                     thetas.append(self.pl_params[inst][param])
                     use_lm = True
@@ -201,8 +190,7 @@ class LightCurveModel:
                 elif param[:2] == 'GP':
                     # Ensure that there are appropriate regressors.
                     if self.gp_regressors is None or inst not in self.gp_regressors.keys():
-                        msg = 'No GP regressors passed for instrument ' \
-                              '{}'.format(inst)
+                        msg = 'No GP regressors passed for instrument {}'.format(inst)
                         raise ValueError(msg)
                     gp_params.append(param)
                     use_gp = True
@@ -221,8 +209,7 @@ class LightCurveModel:
                 try:
                     if self.ld_model.split('-')[1] == 'kipping':
                         assert len(ld_params) == 2
-                        msg = 'LD parameters must be >= 0 to use the ' \
-                              'Kipping parameterization.'
+                        msg = 'LD parameters must be >= 0 to use the Kipping parameterization.'
                         assert np.all(np.array(ld_params) >= 0), msg
                         u1, u2 = utils.ld_q2u(ld_params[0], ld_params[1])
                         ld_params = [u1, u2]
@@ -234,30 +221,23 @@ class LightCurveModel:
 
                 # === Do the Light Curve Calculation ===
                 if lc_model_type[inst][pl] == 'transit':
-                    # Calculate a basic transit model using the input
-                    # parameters.
-                    pl_flux = simple_transit(self.t[inst],
-                                             self.pl_params[inst][pl],
-                                             ld_params, ld_model=ld_model)
+                    # Calculate a basic transit model using the input parameters.
+                    pl_flux = simple_transit(self.t[inst], self.pl_params[inst][pl], ld_params,
+                                             ld_model=ld_model)
                 elif lc_model_type[inst][pl] == 'eclipse':
-                    # Calculate a basic eclipse model using the input
-                    # parameters.
-                    pl_flux = simple_eclipse(self.t[inst],
-                                             self.pl_params[inst][pl])
+                    # Calculate a basic eclipse model using the input parameters.
+                    pl_flux = simple_eclipse(self.t[inst], self.pl_params[inst][pl])
                 elif lc_model_type[inst][pl] == 'custom-transit':
                     # For custom transit models.
                     custom_call = lc_model_functions[inst][pl]
-                    pl_flux = custom_call(self.t[inst],
-                                          self.pl_params[inst][pl],
-                                          ld_params, ld_model=ld_model)
+                    pl_flux = custom_call(self.t[inst], self.pl_params[inst][pl], ld_params,
+                                          ld_model=ld_model)
                 elif lc_model_type[inst][pl] == 'custom-eclipse':
                     # For custom eclipse models.
                     custom_call = lc_model_functions[inst][pl]
-                    pl_flux = custom_call(self.t[inst],
-                                          self.pl_params[inst][pl])
+                    pl_flux = custom_call(self.t[inst], self.pl_params[inst][pl])
                 else:
-                    msg = 'Unknown light curve model type ' \
-                          '{}.'.format(lc_model_type[inst][pl])
+                    msg = 'Unknown light curve model type {}.'.format(lc_model_type[inst][pl])
                     raise ValueError(msg)
                 # Store the model for each planet seperately.
                 self.flux_decomposed[inst]['pl'][pl] = pl_flux
@@ -271,14 +251,13 @@ class LightCurveModel:
             # === Linear Models ===
             if use_lm is True:
                 if not self.silent:
-                    fancyprint('Linear model(s) detected for '
-                               'instrument {}.'.format(inst))
+                    fancyprint('Linear model(s) detected for instrument {}.'.format(inst))
                 self.flux_decomposed[inst]['lm'] = {}
                 regressors = np.array(self.linear_regressors[inst])
                 # Make sure that the number of regressors equals the number of
                 # lm parameters.
-                msg = 'Number of linear model parameters does not match ' \
-                      'number of regressors for instrument {}.'.format(inst)
+                msg = 'Number of linear model parameters does not match number of regressors for ' \
+                      'instrument {}.'.format(inst)
                 assert np.shape(regressors)[0] == len(thetas), msg
 
                 self.flux_decomposed[inst]['lm']['total'] = np.zeros_like(regressors[0])
@@ -299,8 +278,7 @@ class LightCurveModel:
             if use_gp is True:
                 # Ensure observations are passed for this instrument.
                 if self.observations is None or self.observations[inst] is None:
-                    msg = 'Observations must be passed for instrument {} to ' \
-                          'use a GP.'.format(inst)
+                    msg = 'Observations must be passed for instrument {} to use a GP.'.format(inst)
                     raise ValueError(msg)
 
                 # Identify GP kernel to use (if any).
@@ -312,8 +290,7 @@ class LightCurveModel:
                             if not self.silent:
                                 fancyprint('GP kernel {} identified.'.format(kernel))
                 if self.gp_kernel is None:
-                    msg = 'No recognized GP kernel with parameters ' \
-                          '{}.'.format(gp_params)
+                    msg = 'No recognized GP kernel with parameters {}.'.format(gp_params)
                     raise ValueError(msg)
 
                 # Calculate GP model.
@@ -324,8 +301,7 @@ class LightCurveModel:
                     omega = 2 * np.pi * self.pl_params[inst]['GP_bg']
                     s0 = self.pl_params[inst]['GP_ag']**2 / omega / np.sqrt(2)
                     q = 1/np.sqrt(2)
-                    kernel = terms.SHOTerm(log_S0=np.log(s0),
-                                           log_omega0=np.log(omega),
+                    kernel = terms.SHOTerm(log_S0=np.log(s0), log_omega0=np.log(omega),
                                            log_Q=np.log(q))
                 elif self.gp_kernel == 'SHO':
                     kernel = terms.SHOTerm(log_S0=np.log(self.pl_params[inst]['GP_S0']),
@@ -343,8 +319,7 @@ class LightCurveModel:
                 try:
                     gp.compute(self.t[inst], self.pl_params[inst]['sigma'])
                     thismodel = gp.predict(self.observations[inst]['flux'] - self.flux[inst],
-                                           self.t[inst], return_cov=False,
-                                           return_var=False)
+                                           self.t[inst], return_cov=False, return_var=False)
                     self.gp[inst] = gp
                 except Exception as err:
                     if str(err) == 'failed to factorize or solve matrix':
@@ -360,21 +335,18 @@ class LightCurveModel:
             self.flux_decomposed[inst]['total'] = self.flux[inst]
 
     def simulate_observations(self):
-        """Given a light curve model and expected scatter, simulate some fake
-        observations.
+        """Given a light curve model and expected scatter, simulate some fake observations.
         """
 
         # Make sure that light curves have already been calculated.
         if self.flux_decomposed is None:
-            msg = 'It looks like the compute_lightcurves method has not yet ' \
-                  'been run.\n compute_lightcurves must be run before ' \
-                  'create_observations.'
+            msg = 'It looks like the compute_lightcurves method has not yet been run.\n ' \
+                  'compute_lightcurves must be run before create_observations.'
             raise ValueError(msg)
 
         # Don't run if observations already exist.
         if self.observations is not None:
-            msg = 'Observational data already exists. I imagine you do not ' \
-                  'want to overwrite it!'
+            msg = 'Observational data already exists. I imagine you do not want to overwrite it!'
             raise ValueError(msg)
 
         if not self.silent:
@@ -474,6 +446,42 @@ def simple_transit(t, pl_params, ld, ld_model='quadratic'):
 
     m = batman.TransitModel(params, t)
     flux = m.light_curve(params)
+
+    return flux
+
+
+def transit_exp_ramp(t, pl_params, ld, ld_model='quadratic'):
+    """Calculate a transit model with an exponential ramp.
+
+        Parameters
+        ----------
+        t : ndarray(float)
+            Time stamps at which to calculate the light curve.
+        pl_params : dict
+            Dictionary of input parameters. Must contain the following:
+            t0, time of mid-transit
+            per, planet orbital period in days
+            rp, planet-to-star radius ratio
+            a, planet semi-major axis in units of stellar radii
+            inc, planet orbital inclination in degrees
+            ecc, planet orbital eccentricity
+            w, planet argument of periastron.
+            ramp-amp, amplitude of the exponential ramp.
+            ramp-tmsc, Decay (or growth) timescale of the exponential ramp.
+        ld : list(float)
+            List of limb darkening parameters.
+        ld_model : str
+            BATMAN limb darkening identifier.
+
+        Returns
+        -------
+        flux : ndarray(float)
+            Model light curve.
+        """
+
+    flux = simple_transit(t, pl_params, ld, ld_model=ld_model)
+    tt = (t - np.mean(t))/np.std(t)
+    flux += pl_params['ramp-amp'] * np.exp(pl_params['ramp-tmsc'] * tt)
 
     return flux
 
