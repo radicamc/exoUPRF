@@ -13,11 +13,105 @@ import h5py
 import matplotlib.backends.backend_pdf
 from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
 
 
+def make_allan_plot(residuals, integration_time=None, labels=None,
+                    just_calculate=False):
+    """Make an allan variance plot for a given set of residuals.
+    Original routine by Hannah Wakeford, adapted by MCR.
+
+    Parameters
+    ----------
+    residuals : list
+        List of arrays of residuals to bin.
+    integration_time : float
+        Integration time for the observations.
+    labels : list(str)
+        List of labels corresponding to each of the passed residuals. Must
+        have the same size as residuals.
+    just_calculate : bool
+        If True, don't plot anything. Just calculate the binning statistics
+        and return them.
+    """
+
+    if labels is not None:
+        assert len(labels) == len(residuals)
+
+    # Bin data into multiple bin sizes.
+    maxnbins = len(residuals[0]) / 4
+    binstep = 1
+    # Create an array of the bin sizes in integrations.
+    bins = np.arange(1, maxnbins + binstep, step=binstep, dtype=int)
+
+    if just_calculate is False:
+        f, ax1 = plt.subplots(facecolor='white', figsize=(6, 4))
+    # Loop over each pack of residuals in the input.
+    for r in range(len(residuals)):
+        thisres = residuals[r]
+
+        # Initialize storage arrays.
+        nbins = np.zeros(len(bins), dtype=int)
+        rms = np.zeros(len(bins))
+
+        # Loop over each bin size and bin the requisite number of integrations.
+        for i in range(len(bins)):
+            # Total number of bins binning binz[i] integrations per bin.
+            nbins[i] = int(np.floor(thisres.size / bins[i]))
+            bindata = np.zeros(nbins[i], dtype=float)
+
+            # Do the binning.
+            for j in range(nbins[i]):
+                bindata[j] = np.nanmean(thisres[j*bins[i]:(j+1)*bins[i]])
+
+            # Get rms.
+            rms[i] = np.sqrt(np.nanmean(bindata**2))
+
+        # Get expected white noise trend.
+        phot_noise = (np.nanstd(thisres) / np.sqrt(bins)) * np.sqrt(nbins / (nbins-1))
+
+        # Plot up the binned statistic against the expected statistic.
+        if just_calculate is False:
+            if labels is not None:
+                ax1.plot(bins, rms*1e6, label=labels[r])
+            else:
+                ax1.plot(bins, rms*1e6)
+            ax1.plot(bins, phot_noise*1e6, color='black', ls='--')
+
+    if just_calculate is False:
+        # Plot formatting.
+        ax1.set_xlabel('Bin Size [integrations]', fontsize=12)
+        ax1.set_ylabel('RMS [ppm]', fontsize=12)
+        ax1.set_xscale('log')
+        ax1.set_yscale('log')
+        ax1.tick_params(axis='both', which='major', labelsize=10)
+        ax1.xaxis.set_major_formatter(mticker.ScalarFormatter())
+        ax1.yaxis.set_major_formatter(mticker.ScalarFormatter())
+        ax1.yaxis.set_minor_formatter(mticker.ScalarFormatter())
+        if labels is not None:
+            ax1.legend()
+
+        # Now with time as the x-axis.
+        if integration_time is not None:
+            ax2 = ax1.twiny()
+            ax2.plot(bins * integration_time, rms*1e6, lw=0)
+            ax2.set_yscale('log')
+            ax2.set_xscale('log')
+            ax2.set_xlabel('Bin Size [mins]', fontsize=12)
+            ax2.xaxis.set_major_formatter(mticker.ScalarFormatter())
+            ax2.yaxis.set_major_formatter(mticker.ScalarFormatter())
+            ax2.yaxis.set_minor_formatter(mticker.ScalarFormatter())
+
+        plt.show()
+
+        return
+    else:
+        return rms, bins, phot_noise
+
+
 def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None,
-                     outpdf=None):
+                     outpdf=None, log_params=None, drop_chains=None):
     """Make a corner plot of fitted posterior distributions.
 
     Parameters
@@ -33,6 +127,10 @@ def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None,
         Fitted parameter names.
     outpdf : PdfPages
         Path to file to save plot.
+    log_params : list(int), None
+        Indices of parameters to show on log scale.
+    drop_chains : list(int), None
+        Indices of chains to drop.
     """
 
     # Get chains from HDF5 file and extract best fitting parameters.
@@ -44,11 +142,21 @@ def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None,
                 mcmc_burnin = int(0.75 * np.shape(samples)[0])
             # Cut steps for burn in.
             samples = samples[mcmc_burnin:]
+            # Drop chains if necessary.
+            if drop_chains is not None:
+                drop_chains = np.atleast_1d(drop_chains)
+                samples = np.delete(samples, drop_chains, axis=1)
             nwalkers, nchains, ndim = np.shape(samples)
             # Flatten chains.
             samples = samples.reshape(nwalkers * nchains, ndim)[::mcmc_thin]
         elif 'ns' in list(f.keys()):
             samples = f['ns']['chain'][()]
+
+    # Log certain parameters if necessary.
+    if log_params is not None:
+        log_params = np.atleast_1d(log_params)
+        for i in log_params:
+            samples[:, i] = np.log10(samples[:, i])
 
     # Make corner plot
     figure = corner.corner(samples, labels=labels, show_titles=True)
@@ -239,7 +347,8 @@ def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None,
         plt.show()
 
 
-def plot_mcmc_chains(filename, labels=None):
+def plot_mcmc_chains(filename, labels=None, log_params=None,
+                     highlight_chains=None, drop_chains=None):
     """Plot MCMC chains.
 
     Parameters
@@ -248,17 +357,38 @@ def plot_mcmc_chains(filename, labels=None):
         MCMC output file.
     labels : list(str)
         Fitted parameter names.
+    log_params : list(str), None
+        Indices of parameters to plot in log-space.
+    highlight_chains : list(int), None
+        Indices of chains to highlight.
+    drop_chains : list(int), None
+        Indices of chains to drop.
     """
 
     # Get MCMC chains.
     with h5py.File(filename, 'r') as f:
         samples = f['mcmc']['chain'][()]
 
+    # Convert to log-scale if necessary.
+    if log_params is not None:
+        log_params = np.atleast_1d(log_params)
+        for i in log_params:
+            samples[:, :, i] = np.log10(samples[:, :, i])
+
+    # Drop chains if necessary.
+    if drop_chains is not None:
+        drop_chains = np.atleast_1d(drop_chains)
+        samples = np.delete(samples, drop_chains, axis=1)
+
     nwalkers, nchains, ndim = np.shape(samples)
     # Plot chains.
     fig, axes = plt.subplots(ndim,
                              figsize=(10, np.ceil(ndim / 1.25).astype(int)),
                              sharex=True)
+
+    if highlight_chains is not None:
+        highlight_chains = np.atleast_1d(highlight_chains)
+
     for i in range(ndim):
         ax = axes[i]
         ax.plot(samples[:, :, i], c='black', alpha=0.3)
@@ -266,6 +396,9 @@ def plot_mcmc_chains(filename, labels=None):
         ax.yaxis.set_label_coords(-0.1, 0.5)
         if labels is not None:
             ax.set_ylabel(labels[i])
+        if highlight_chains is not None:
+            for j in highlight_chains:
+                ax.plot(samples[:, j, i], c='red', alpha=0.5)
 
     axes[-1].set_xlabel('Step Number')
     plt.show()

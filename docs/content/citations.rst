@@ -2,7 +2,7 @@ Citations
 ==========
 
 If you make use of this code in your work, please cite this `Zenodo record <https://zenodo.org/records/12628067>`_ as
-well as `PLACEHOLDER <https://zenodo.org/records/12628067>`_ for its first use.
+well as `Radica et al. (2025) <https://ui.adsabs.harvard.edu/abs/2025ApJ...979L...5R/abstract>`_ for its first use.
 
 Additional Citations
 --------------------

@@ -14,6 +14,7 @@ from dynesty import NestedSampler
 from dynesty.utils import resample_equal
 import h5py
 import emcee
+from multiprocessing import Pool
 import numpy as np
 import os
 from pathlib import Path
@@ -32,7 +33,8 @@ class Dataset:
 
     def __init__(self, input_parameters, t, lc_model_type,
                  linear_regressors=None, observations=None, gp_regressors=None,
-                 ld_model='quadratic', silent=False):
+                 ld_model='quadratic', silent=False,
+                 custom_lc_functions=None):
         """Initialize the Dataset class.
 
         Parameters
@@ -75,9 +77,11 @@ class Dataset:
         self.flux_decomposed = None
         self.flux = None
         self.output_file = None
+        self.custom_lc_functions = custom_lc_functions
 
-    def fit(self, output_file, sampler='MCMC', mcmc_start=None,
-            mcmc_steps=10000, continue_mcmc=False, dynesty_args=None):
+    def fit(self, output_file, sampler='MCMC', mcmc_start=None, mcmc_ncores=1,
+            mcmc_steps=10000, continue_mcmc=False, dynesty_args=None,
+            force_redo=False):
         """Run a light curve fit.
 
         Parameters
@@ -90,12 +94,16 @@ class Dataset:
             Starting positions for MCMC sampling. MCMC only.
         mcmc_steps : int
             Number of steps to take for MCMC sampling. MCMC only.
+        mcmc_ncores : int
+            Number of cores for multiprocessing. MCMC only.
         continue_mcmc : bool
             If True, continue from a previous MCMC run saved in output_file.
             MCMC only.
         dynesty_args : dict
             Keyword arguments to pass to the dynesty NestedSampler instance.
             Nested Sampling only.
+        force_redo : bool
+            If True, will overwrite previous output files.
         """
 
         # Set up and save output file name.
@@ -106,6 +114,13 @@ class Dataset:
         outdir = os.path.dirname(self.output_file)
         if not os.path.exists(outdir):
             Path(outdir).mkdir(parents=True, exist_ok=True)
+        if os.path.exists(self.output_file):
+            if force_redo is True:
+                fancyprint('force_redo=True, existing file {} will be '
+                           'overwritten.'.format(output_file), msg_type='WARNING')
+            else:
+                raise ValueError('Output file already {} exists and '
+                                 'force_redo=False.'.format(output_file))
 
         # For MCMC sampling with emcee.
         if sampler == 'MCMC':
@@ -135,14 +150,16 @@ class Dataset:
             # Arguments for the log probability function call.
             log_prob_args = (self.pl_params, self.t, self.observations,
                              self.lc_model, self.linear_regressors,
-                             self.gp_regressors, self.ld_model)
+                             self.gp_regressors, self.ld_model,
+                             self.custom_lc_functions)
 
             # Initialize and run the emcee sampler.
             mcmc_sampler = fit_emcee(log_probability, initial_pos=mcmc_start,
                                      silent=self.silent, mcmc_steps=mcmc_steps,
                                      log_probability_args=log_prob_args,
                                      output_file=output_file,
-                                     continue_run=continue_mcmc)
+                                     continue_run=continue_mcmc,
+                                     ncores=mcmc_ncores)
             self.mcmc_sampler = mcmc_sampler
 
         # For Nested Sampling with dynesty.
@@ -172,7 +189,8 @@ class Dataset:
             # Arguments for the log likelihood function call.
             log_like_args = (self.pl_params, self.t, self.observations,
                              self.lc_model, self.linear_regressors,
-                             self.gp_regressors, self.ld_model)
+                             self.gp_regressors, self.ld_model,
+                             self.custom_lc_functions)
             ptform_kwargs = {'param_dict': self.pl_params}
 
             nested_sampler = fit_dynesty(set_prior_transform, log_likelihood,
@@ -188,7 +206,7 @@ class Dataset:
             raise ValueError(msg)
 
     def get_param_dict_from_fit(self, method='median', mcmc_burnin=None,
-                                mcmc_thin=15):
+                                mcmc_thin=15, drop_chains=None):
         """Reformat MCMC fit outputs into the parameter dictionary format
         expected by Model.
 
@@ -202,6 +220,8 @@ class Dataset:
             length. Only for MCMC.
         mcmc_thin : int
             Increment by which to thin chains. Only for MCMC.
+        drop_chains : list(int), None
+            Indices of chains to drop.
 
         Returns
         -------
@@ -213,10 +233,12 @@ class Dataset:
                                                    method=method,
                                                    mcmc_burnin=mcmc_burnin,
                                                    mcmc_thin=mcmc_thin,
-                                                   silent=self.silent)
+                                                   silent=self.silent,
+                                                   drop_chains=drop_chains)
         return param_dict
 
-    def get_results_from_fit(self, mcmc_burnin=None, mcmc_thin=15):
+    def get_results_from_fit(self, mcmc_burnin=None, mcmc_thin=15,
+                             drop_chains=None):
         """Extract MCMC posterior sample statistics (median and 1 sigma bounds)
         for each fitted parameter.
 
@@ -227,6 +249,8 @@ class Dataset:
             length.
         mcmc_thin : int
             Increment by which to thin chains.
+        drop_chains : list(int), None
+            Indices of chains to drop.
 
         Returns
         -------
@@ -238,22 +262,33 @@ class Dataset:
         results_dict = utils.get_results_from_fit(self.output_file,
                                                   mcmc_burnin=mcmc_burnin,
                                                   mcmc_thin=mcmc_thin,
-                                                  silent=self.silent)
+                                                  silent=self.silent,
+                                                  drop_chains=drop_chains)
         return results_dict
 
-    def plot_mcmc_chains(self, labels=None):
+    def plot_mcmc_chains(self, labels=None, log_params=None,
+                         highlight_chains=None, drop_chains=None):
         """Plot MCMC chains.
 
         Parameters
         ----------
         labels : list(str)
             Fitted parameter names.
+        log_params : list(int), None
+            Indices of parameters to plot in log-space.
+        highlight_chains : list(int), None
+            Indices of chains to highlight.
+        drop_chains : list(int), None
+            Indices of chains to drop.
         """
 
-        plotting.plot_mcmc_chains(self.output_file, labels=labels)
+        plotting.plot_mcmc_chains(self.output_file, labels=labels,
+                                  log_params=log_params,
+                                  highlight_chains=highlight_chains,
+                                  drop_chains=drop_chains)
 
     def make_corner_plot(self, mcmc_burnin=None, mcmc_thin=15, labels=None,
-                         outpdf=None):
+                         outpdf=None, log_params=None, drop_chains=None):
         """Make a corner plot of fitted posterior distributions.
 
         Parameters
@@ -267,11 +302,16 @@ class Dataset:
             Fitted parameter names.
         outpdf : PdfPages
             File to save plot.
+        log_params : list(int), None
+            Indices of parameters to plot in log-space.
+        drop_chains : list(int), None
+            Indices of chains to drop.
         """
 
         plotting.make_corner_plot(self.output_file, mcmc_burnin=mcmc_burnin,
                                   mcmc_thin=mcmc_thin, labels=labels,
-                                  outpdf=outpdf)
+                                  outpdf=outpdf, log_params=log_params,
+                                  drop_chains=drop_chains)
 
 
 def fit_dynesty(prior_transform, log_like, ndim, output_file,
@@ -348,7 +388,8 @@ def fit_dynesty(prior_transform, log_like, ndim, output_file,
 
 
 def fit_emcee(log_prob, output_file, initial_pos=None, continue_run=False,
-              silent=False, mcmc_steps=10000, log_probability_args=None):
+              silent=False, mcmc_steps=10000, log_probability_args=None,
+              ncores=1):
     """Run a light curve fit via MCMC using the emcee sampler.
 
     Parameters
@@ -368,6 +409,8 @@ def fit_emcee(log_prob, output_file, initial_pos=None, continue_run=False,
         Number of MCMC steps before stopping.
     log_probability_args : tuple
         Arguments for the passed log_prob function.
+    ncores : int
+        Number of cores to use for multiprocessing.
 
     Returns
     -------
@@ -420,9 +463,11 @@ def fit_emcee(log_prob, output_file, initial_pos=None, continue_run=False,
         fancyprint('{} steps already completed.'.format(backend.iteration))
 
     # Do the sampling.
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob, backend=backend,
-                                    args=log_probability_args)
-    output = sampler.run_mcmc(initial_pos, mcmc_steps, progress=not silent)
+    with Pool(processes=ncores) as pool:
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_prob,
+                                        backend=backend, pool=pool,
+                                        args=log_probability_args)
+        output = sampler.run_mcmc(initial_pos, mcmc_steps, progress=not silent)
 
     return sampler
 
@@ -489,7 +534,7 @@ def set_prior_transform(theta, param_dict):
 
 def log_likelihood(theta, param_dict, time, observations, lc_model,
                    linear_regressors=None, gp_regressors=None,
-                   ld_model='quadratic'):
+                   ld_model='quadratic', custom_lc_function=None):
     """Evaluate the log likelihood for a dataset and a given set of model
     parameters.
 
@@ -534,7 +579,8 @@ def log_likelihood(theta, param_dict, time, observations, lc_model,
                                 observations=observations,
                                 gp_regressors=gp_regressors,
                                 ld_model=ld_model, silent=True)
-    thismodel.compute_lightcurves(lc_model_type=lc_model)
+    thismodel.compute_lightcurves(lc_model_type=lc_model,
+                                  lc_model_functions=custom_lc_function)
 
     # For each instrument, calculate the likelihood.
     for inst in observations.keys():
@@ -561,7 +607,7 @@ def log_likelihood(theta, param_dict, time, observations, lc_model,
 
 def log_probability(theta, param_dict, time, observations, lc_model,
                     linear_regressors=None, gp_regressors=None,
-                    ld_model='quadratic'):
+                    ld_model='quadratic', custom_lc_function=None):
     """Evaluate the log probability for a dataset and a given set of model
     parameters.
 
@@ -594,7 +640,8 @@ def log_probability(theta, param_dict, time, observations, lc_model,
     if not np.isfinite(lp):
         return -np.inf
     ll = log_likelihood(theta, param_dict, time, observations, lc_model,
-                        linear_regressors, gp_regressors, ld_model)
+                        linear_regressors, gp_regressors, ld_model,
+                        custom_lc_function)
     if not np.isfinite(ll):
         return -np.inf
 
