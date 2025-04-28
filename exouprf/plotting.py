@@ -17,9 +17,9 @@ import matplotlib.ticker as mticker
 import numpy as np
 
 
-def make_allan_plot(residuals, integration_time=None, labels=None,
-                    just_calculate=False):
-    """Make an allan variance plot for a given set of residuals.
+def make_noise_binning_plot(residuals, integration_time=None, labels=None,
+                            just_calculate=False):
+    """Make a 'Not an Allan Variance Plot" (TM) for a given set of residuals.
     Original routine by Hannah Wakeford, adapted by MCR.
 
     Parameters
