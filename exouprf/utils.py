@@ -14,8 +14,8 @@ import numpy as np
 
 
 def fancyprint(message, msg_type='INFO'):
-    """Fancy printing statement mimicking logging. Basically a hack to get
-    around complications with the STScI pipeline logging.
+    """Fancy printing statement mimicking logging. Basically a hack to get around complications
+    with the STScI pipeline logging.
 
     Parameters
     ----------
@@ -29,21 +29,19 @@ def fancyprint(message, msg_type='INFO'):
     print('{} - exoUPRF - {} - {}'.format(time, msg_type, message))
 
 
-def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
-                            mcmc_thin=15, silent=False, drop_chains=None):
-    """Reformat fit outputs from MCMC or NS into the parameter dictionary
-    format expected by Model.
+def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None, mcmc_thin=15,
+                            silent=False, drop_chains=None):
+    """Reformat fit outputs from MCMC or NS into the parameter dictionary format expected by Model.
 
     Parameters
     ----------
     filename : str
         Path to file with MCMC fit outputs.
     method : str
-        Method via which to get best fitting parameters from MCMC chains.
-        Either "median" or "maxlike".
+        Method via which to get best fitting parameters from MCMC chains. Either "median" or
+        "maxlike".
     mcmc_burnin : int
-        Number of steps to discard as burn in. Defaults to 75% of chain
-        length. Only for MCMC.
+        Number of steps to discard as burn in. Defaults to 75% of chain length. Only for MCMC.
     mcmc_thin : int
         Increment by which to thin chains. Only for MCMC.
     silent : bool
@@ -58,8 +56,7 @@ def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
     """
 
     if not silent:
-        fancyprint('Importing fitted parameters from file '
-                   '{}.'.format(filename))
+        fancyprint('Importing fitted parameters from file {}.'.format(filename))
 
     # Get sample chains from HDF5 file and extract best fitting parameters.
     with h5py.File(filename, 'r') as f:
@@ -82,9 +79,7 @@ def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
             chain = f['ns']['chain'][()]
             sampler = 'ns'
         else:
-            msg = 'No MCMC or Nested Sampling results in file ' \
-                  '{}.'.format(filename)
-            raise KeyError(msg)
+            raise KeyError('No MCMC or Nested Sampling results in file {}.'.format(filename))
         # Either get maximum likelihood solution...
         if method == 'maxlike':
             if sampler == 'mcmc':
@@ -97,8 +92,7 @@ def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
         elif method == 'median':
             bestfit = np.nanmedian(chain, axis=0)
 
-        # HDF5 groups are in alphabetical order. Reorder to match original
-        # inputs.
+        # HDF5 groups are in alphabetical order. Reorder to match original inputs.
         params, order = [], []
         for param in f['inputs'].keys():
             params.append(param)
@@ -106,8 +100,8 @@ def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
         ii = np.argsort(order)
         params = np.array(params)[ii]
 
-        # Create the parameter dictionary expected for Model using the fixed
-        # parameters from the original inputs and the MCMC results.
+        # Create the parameter dictionary expected for Model using the fixed parameters from the
+        # original inputs and the MCMC results.
         param_dict = {}
         pcounter = 0
         for param in params:
@@ -124,18 +118,15 @@ def get_param_dict_from_fit(filename, method='median', mcmc_burnin=None,
     return param_dict
 
 
-def get_results_from_fit(filename, mcmc_burnin=None, mcmc_thin=15,
-                         silent=False, drop_chains=None):
-    """Extract posterior sample statistics (median and 1 sigma bounds) for
-    each fitted parameter.
+def get_results_from_fit(filename, mcmc_burnin=None, mcmc_thin=15, silent=False, drop_chains=None):
+    """Extract posterior sample statistics (median and 1 sigma bounds) for each fitted parameter.
 
     Parameters
     ----------
     filename : str
         Path to file with MCMC fit outputs.
     mcmc_burnin : int
-        Number of steps to discard as burn in. Defaults to 75% of chain
-        length. Only for MCMC.
+        Number of steps to discard as burn in. Defaults to 75% of chain length. Only for MCMC.
     mcmc_thin : int
         Increment by which to thin chains. Only for MCMC.
     silent : bool
@@ -146,8 +137,7 @@ def get_results_from_fit(filename, mcmc_burnin=None, mcmc_thin=15,
     Returns
     -------
     results_dict : dict
-        Dictionary of posterior medians and 1 sigma bounds for each fitted
-        parameter.
+        Dictionary of posterior medians and 1 sigma bounds for each fitted parameter.
     """
 
     if not silent:
@@ -172,12 +162,9 @@ def get_results_from_fit(filename, mcmc_burnin=None, mcmc_thin=15,
         elif 'ns' in list(f.keys()):
             chain = f['ns']['chain'][()]
         else:
-            msg = 'No MCMC or Nested Sampling results in file ' \
-                  '{}.'.format(filename)
-            raise KeyError(msg)
+            raise KeyError('No MCMC or Nested Sampling results in file {}.'.format(filename))
 
-        # HDF5 groups are in alphabetical order. Reorder to match original
-        # inputs.
+        # HDF5 groups are in alphabetical order. Reorder to match original inputs.
         params, order = [], []
         for param in f['inputs'].keys():
             params.append(param)
@@ -185,8 +172,8 @@ def get_results_from_fit(filename, mcmc_burnin=None, mcmc_thin=15,
         ii = np.argsort(order)
         params = np.array(params)[ii]
 
-        # Create the parameter dictionary expected for Model using the fixed
-        # parameters from the original inputs and the MCMC results.
+        # Create the parameter dictionary expected for Model using the fixed parameters from the
+        # original inputs and the MCMC results.
         results_dict = {}
         pcounter = 0
         for param in params:
