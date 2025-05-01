@@ -17,8 +17,7 @@ import matplotlib.ticker as mticker
 import numpy as np
 
 
-def make_noise_binning_plot(residuals, integration_time=None, labels=None,
-                            just_calculate=False):
+def make_noise_binning_plot(residuals, integration_time=None, labels=None, just_calculate=False):
     """Make a 'Not an Allan Variance Plot" (TM) for a given set of residuals.
     Original routine by Hannah Wakeford, adapted by MCR.
 
@@ -29,11 +28,10 @@ def make_noise_binning_plot(residuals, integration_time=None, labels=None,
     integration_time : float
         Integration time for the observations.
     labels : list(str)
-        List of labels corresponding to each of the passed residuals. Must
-        have the same size as residuals.
+        List of labels corresponding to each of the passed residuals. Must have the same size as
+        residuals.
     just_calculate : bool
-        If True, don't plot anything. Just calculate the binning statistics
-        and return them.
+        If True, don't plot anything. Just calculate the binning statistics and return them.
     """
 
     if labels is not None:
@@ -110,8 +108,8 @@ def make_noise_binning_plot(residuals, integration_time=None, labels=None,
         return rms, bins, phot_noise
 
 
-def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None,
-                     outpdf=None, log_params=None, drop_chains=None):
+def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None, outpdf=None,
+                     log_params=None, drop_chains=None):
     """Make a corner plot of fitted posterior distributions.
 
     Parameters
@@ -119,8 +117,7 @@ def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None,
     filename : str
         Path to file with MCMC fit outputs.
     mcmc_burnin : int
-        Number of steps to discard as burn in. Defaults to 75% of chain
-        length. MCMC only.
+        Number of steps to discard as burn in. Defaults to 75% of chain length. MCMC only.
     mcmc_thin : int
         Increment by which to thin chains. MCMC only.
     labels : list(str)
@@ -172,9 +169,8 @@ def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None,
         plt.show()
 
 
-def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None,
-                         outpdf=None,  title=None, systematics=None,
-                         rasterized=False, nbin=10):
+def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None, outpdf=None, title=None,
+                         systematics=None, rasterized=False, nbin=10):
     """Plot results of a light curve fit.
 
     Parameters
@@ -210,12 +206,10 @@ def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None,
         return np.nansum((o - m)**2/e**2)
 
     if systematics is not None:
-        fig = plt.figure(figsize=(13, 9), facecolor='white',
-                         rasterized=rasterized)
+        fig = plt.figure(figsize=(13, 9), facecolor='white', rasterized=rasterized)
         gs = GridSpec(5, 1, height_ratios=[3, 3, 1, 0.3, 1])
     else:
-        fig = plt.figure(figsize=(13, 7), facecolor='white',
-                         rasterized=rasterized)
+        fig = plt.figure(figsize=(13, 7), facecolor='white', rasterized=rasterized)
         gs = GridSpec(4, 1, height_ratios=[3, 1, 0.3, 1])
 
     # Light curve with full systematics + astrophysical model.
@@ -223,8 +217,7 @@ def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None,
     assert len(data) == len(model)
     nint = len(data)  # Total number of data points
     # Full dataset
-    ax1.errorbar(t, data, yerr=scatter, fmt='o', capsize=0,
-                 color='royalblue', ms=5, alpha=0.25)
+    ax1.errorbar(t, data, yerr=scatter, fmt='o', capsize=0, color='royalblue', ms=5, alpha=0.25)
     # Binned points
     rem = nint % nbin
     if rem != 0:
@@ -237,9 +230,8 @@ def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None,
         d_bin = data.reshape((nint-rem)//nbin, nbin)
     t_bin = np.nanmean(t_bin, axis=1)
     d_bin = np.nanmean(d_bin, axis=1)
-    ax1.errorbar(t_bin, d_bin, yerr=scatter/np.sqrt(nbin), fmt='o',
-                 mfc='blue', mec='white', ecolor='blue', ms=8, alpha=1,
-                 zorder=11)
+    ax1.errorbar(t_bin, d_bin, yerr=scatter/np.sqrt(nbin), fmt='o', mfc='blue', mec='white',
+                 ecolor='blue', ms=8, alpha=1, zorder=11)
     # Other stuff.
     ax1.plot(t, model, color='black', zorder=10)
     ax1.set_ylabel('Relative Flux', fontsize=18)
@@ -269,18 +261,16 @@ def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None,
         model_detrended = model - systematics
         data_detrended = data - systematics
         # Full dataset.
-        ax2.errorbar(t, data_detrended, yerr=scatter, fmt='o',
-                     capsize=0, color='salmon', ms=5, alpha=0.25)
+        ax2.errorbar(t, data_detrended, yerr=scatter, fmt='o', capsize=0, color='salmon', ms=5,
+                     alpha=0.25)
         # Binned points.
         if rem != 0:
-            d_bin = data_detrended[trim_i:trim_e].reshape((nint-rem)//nbin,
-                                                          nbin)
+            d_bin = data_detrended[trim_i:trim_e].reshape((nint-rem)//nbin, nbin)
         else:
             d_bin = data_detrended.reshape((nint-rem)//nbin, nbin)
         d_bin = np.nanmean(d_bin, axis=1)
-        ax2.errorbar(t_bin, d_bin, yerr=scatter/np.sqrt(nbin), fmt='o',
-                     mfc='red', mec='white', ecolor='red', ms=8, alpha=1,
-                     zorder=11)
+        ax2.errorbar(t_bin, d_bin, yerr=scatter/np.sqrt(nbin), fmt='o', mfc='red', mec='white',
+                     ecolor='red', ms=8, alpha=1, zorder=11)
         # Other stuff.
         ax2.plot(t, model_detrended, color='black', zorder=10)
         ax2.set_ylabel('Relative Flux\n(Detrended)', fontsize=18)
@@ -296,22 +286,19 @@ def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None,
         ax3 = plt.subplot(gs[1])
     # Full dataset.
     res = (data - model)*1e6
-    ax3.errorbar(t, res, yerr=scatter, alpha=0.25, ms=5,
-                 c='royalblue', fmt='o', zorder=10)
+    ax3.errorbar(t, res, yerr=scatter, alpha=0.25, ms=5, c='royalblue', fmt='o', zorder=10)
     # Binned points.
     if rem != 0:
         r_bin = res[trim_i:trim_e].reshape((nint-rem)//nbin, nbin)
     else:
         r_bin = res.reshape((nint-rem)//nbin, nbin)
     r_bin = np.nanmean(r_bin, axis=1)
-    ax3.errorbar(t_bin, r_bin, yerr=scatter/np.sqrt(nbin), fmt='o',
-                 mfc='blue', mec='white', ecolor='blue', ms=8, alpha=1,
-                 zorder=11)
+    ax3.errorbar(t_bin, r_bin, yerr=scatter/np.sqrt(nbin), fmt='o', mfc='blue', mec='white',
+                 ecolor='blue', ms=8, alpha=1, zorder=11)
     # Other stuff.
     ax3.axhline(0, ls='--', c='black')
     xpos = np.percentile(t, 1)
-    plt.text(xpos, np.max((data - model)*1e6),
-             r'{:.2f}$\,$ppm'.format(scatter*1e6))
+    plt.text(xpos, np.max((data - model)*1e6), r'{:.2f}$\,$ppm'.format(scatter*1e6))
     ax3.fill_between(t, -scatter*1e6, scatter*1e6, color='black', alpha=0.1)
     ax3.set_xlim(np.min(t), np.max(t))
     ax3.set_ylabel('Residuals\n(ppm)', fontsize=18)
@@ -325,11 +312,9 @@ def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None,
     else:
         ax4 = plt.subplot(gs[3])
     bins = np.linspace(-10, 10, 41) + 0.25
-    hist = ax4.hist(res/(scatter*1e6), edgecolor='grey', color='lightgrey',
-                    bins=bins)
+    hist = ax4.hist(res/(scatter*1e6), edgecolor='grey', color='lightgrey', bins=bins)
     area = np.sum(hist[0] * np.diff(bins))
-    ax4.plot(np.linspace(-15, 15, 500),
-             gaus(np.linspace(-15, 15, 500), 0, 1) * area, c='black')
+    ax4.plot(np.linspace(-15, 15, 500), gaus(np.linspace(-15, 15, 500), 0, 1) * area, c='black')
     ax4.set_ylabel('Counts', fontsize=18)
     ax4.set_xlabel('Residuals/Scatter', fontsize=18)
     ax4.set_xlim(-5, 5)
@@ -347,8 +332,8 @@ def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None,
         plt.show()
 
 
-def plot_mcmc_chains(filename, labels=None, log_params=None,
-                     highlight_chains=None, drop_chains=None):
+def plot_mcmc_chains(filename, labels=None, log_params=None, highlight_chains=None,
+                     drop_chains=None):
     """Plot MCMC chains.
 
     Parameters
@@ -382,9 +367,7 @@ def plot_mcmc_chains(filename, labels=None, log_params=None,
 
     nwalkers, nchains, ndim = np.shape(samples)
     # Plot chains.
-    fig, axes = plt.subplots(ndim,
-                             figsize=(10, np.ceil(ndim / 1.25).astype(int)),
-                             sharex=True)
+    fig, axes = plt.subplots(ndim, figsize=(10, np.ceil(ndim / 1.25).astype(int)), sharex=True)
 
     if highlight_chains is not None:
         highlight_chains = np.atleast_1d(highlight_chains)

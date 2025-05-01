@@ -80,8 +80,7 @@ class LightCurveModel:
                     self.multiplicity[chunk] = []
                     # Make sure time axis is passed for each instrument.
                     if chunk not in t.keys():
-                        msg = 'No timestamps passed for instrument {}'.format(chunk)
-                        raise ValueError(msg)
+                        raise ValueError('No timestamps passed for instrument {}'.format(chunk))
 
         # Now go through a second time to get the number of planets.
         for param in input_parameters.keys():
@@ -158,6 +157,9 @@ class LightCurveModel:
             form {inst: {pl: model}}. "transit" and "eclipse" models are supported by default.
             Custom models are possible, and, in this case, model should be the call to the
             custom model function.
+        lc_model_functions : dict, None
+            If lc_model_type is cutom, dictionary of custom model functiomn calls for each
+            instrument and planet. Should have form {inst: {pl: func_call}}.
         """
 
         if not self.silent:
@@ -182,16 +184,14 @@ class LightCurveModel:
                 if param[:5] == 'theta':
                     # Ensure that there are appropriate regressors.
                     if self.linear_regressors is None or inst not in self.linear_regressors.keys():
-                        msg = 'No regressors passed for instrument {}'.format(inst)
-                        raise ValueError(msg)
+                        raise ValueError('No regressors passed for instrument {}'.format(inst))
                     thetas.append(self.pl_params[inst][param])
                     use_lm = True
                 # Note if a GP is to be used.
                 elif param[:2] == 'GP':
                     # Ensure that there are appropriate regressors.
                     if self.gp_regressors is None or inst not in self.gp_regressors.keys():
-                        msg = 'No GP regressors passed for instrument {}'.format(inst)
-                        raise ValueError(msg)
+                        raise ValueError('No GP regressors passed for instrument {}'.format(inst))
                     gp_params.append(param)
                     use_gp = True
                 else:
@@ -237,8 +237,8 @@ class LightCurveModel:
                     custom_call = lc_model_functions[inst][pl]
                     pl_flux = custom_call(self.t[inst], self.pl_params[inst][pl])
                 else:
-                    msg = 'Unknown light curve model type {}.'.format(lc_model_type[inst][pl])
-                    raise ValueError(msg)
+                    raise ValueError('Unknown light curve model type {}.'
+                                     .format(lc_model_type[inst][pl]))
                 # Store the model for each planet seperately.
                 self.flux_decomposed[inst]['pl'][pl] = pl_flux
                 # Add contribution of planet to the total astrophysical model.
@@ -278,8 +278,8 @@ class LightCurveModel:
             if use_gp is True:
                 # Ensure observations are passed for this instrument.
                 if self.observations is None or self.observations[inst] is None:
-                    msg = 'Observations must be passed for instrument {} to use a GP.'.format(inst)
-                    raise ValueError(msg)
+                    raise ValueError('Observations must be passed for instrument {} to use a GP.'
+                                     .format(inst))
 
                 # Identify GP kernel to use (if any).
                 for kernel in gp_kernels.keys():
@@ -290,8 +290,7 @@ class LightCurveModel:
                             if not self.silent:
                                 fancyprint('GP kernel {} identified.'.format(kernel))
                 if self.gp_kernel is None:
-                    msg = 'No recognized GP kernel with parameters {}.'.format(gp_params)
-                    raise ValueError(msg)
+                    raise ValueError('No GP kernel with parameters {}.'.format(gp_params))
 
                 # Calculate GP model.
                 self.flux_decomposed[inst]['gp'] = {}
@@ -340,14 +339,13 @@ class LightCurveModel:
 
         # Make sure that light curves have already been calculated.
         if self.flux_decomposed is None:
-            msg = 'It looks like the compute_lightcurves method has not yet been run.\n ' \
-                  'compute_lightcurves must be run before create_observations.'
-            raise ValueError(msg)
+            raise ValueError('It looks like the compute_lightcurves method has not yet been run. '
+                             'compute_lightcurves must be run before create_observations.')
 
         # Don't run if observations already exist.
         if self.observations is not None:
-            msg = 'Observational data already exists. I imagine you do not want to overwrite it!'
-            raise ValueError(msg)
+            raise ValueError('Observational data already exists. I imagine you do not want to '
+                             'overwrite it!')
 
         if not self.silent:
             fancyprint('Simulating observations for all instruments.')
@@ -487,8 +485,8 @@ def transit_exp_ramp(t, pl_params, ld, ld_model='quadratic'):
 
 
 def transit_quad_curvature(t, pl_params, ld, ld_model='quadratic'):
-    """Calculate a transit model with quadratic curvature in the baseline with
-    variable amplitude and offset from mid-transit.
+    """Calculate a transit model with quadratic curvature in the baseline with variable amplitude
+    and offset from mid-transit.
 
         Parameters
         ----------
@@ -524,8 +522,8 @@ def transit_quad_curvature(t, pl_params, ld, ld_model='quadratic'):
 
 
 def transit_spot_crossing(t, pl_params, ld, ld_model='quadratic'):
-    """Calculate a transit model with a star spot crossing. The star spot will
-    be modelled as a Gaussian bump in the light curve.
+    """Calculate a transit model with a star spot crossing. The star spot will be modelled as a
+    Gaussian bump in the light curve.
 
     Parameters
     ----------
@@ -558,7 +556,6 @@ def transit_spot_crossing(t, pl_params, ld, ld_model='quadratic'):
         return amp * np.exp(-0.5 * (x - mu) ** 2 / sigma ** 2)
 
     flux = simple_transit(t, pl_params, ld, ld_model=ld_model)
-    flux += gauss(t, pl_params['spot-amp'], pl_params['spot-pos'],
-                  pl_params['spot-dur'])
+    flux += gauss(t, pl_params['spot-amp'], pl_params['spot-pos'], pl_params['spot-dur'])
 
     return flux
