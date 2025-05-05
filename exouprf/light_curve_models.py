@@ -283,9 +283,10 @@ class LightCurveModel:
 
                 # Identify GP kernel to use (if any).
                 for kernel in gp_kernels.keys():
-                    with warnings.catch_warnings():
-                        warnings.simplefilter('ignore', category=FutureWarning)
-                        if np.all(np.sort(gp_kernels[kernel]) == np.sort(gp_params)):
+                    for gpp in gp_params:
+                        if gpp not in gp_kernels[kernel]:
+                            continue
+                        else:
                             self.gp_kernel = kernel
                             if not self.silent:
                                 fancyprint('GP kernel {} identified.'.format(kernel))
