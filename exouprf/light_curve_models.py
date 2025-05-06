@@ -17,6 +17,12 @@ import warnings
 import exouprf.utils as utils
 from exouprf.utils import fancyprint
 
+try:
+    import catwoman
+except ModuleNotFoundError:
+    fancyprint('catwoman not installed. Asymmetric transit modelling is unavailable.',
+               msg_type='WARNING')
+
 
 class LightCurveModel:
     """Secondary exoUPRF class. Creates light curve models given a set of input parameters and
@@ -221,9 +227,14 @@ class LightCurveModel:
 
                 # === Do the Light Curve Calculation ===
                 if lc_model_type[inst][pl] == 'transit':
-                    # Calculate a basic transit model using the input parameters.
-                    pl_flux = simple_transit(self.t[inst], self.pl_params[inst][pl], ld_params,
-                                             ld_model=ld_model)
+                    if 'rp2' not in self.pl_params[inst][pl]:
+                        # Calculate a basic transit model using the input parameters.
+                        pl_flux = simple_transit(self.t[inst], self.pl_params[inst][pl], ld_params,
+                                                 ld_model=ld_model)
+                    else:
+                        # Calculate an asymmetric transit model using the input parameters.
+                        pl_flux = asymmetric_transit(self.t[inst], self.pl_params[inst][pl],
+                                                     ld_params, ld_model=ld_model)
                 elif lc_model_type[inst][pl] == 'eclipse':
                     # Calculate a basic eclipse model using the input parameters.
                     pl_flux = simple_eclipse(self.t[inst], self.pl_params[inst][pl])
@@ -311,7 +322,7 @@ class LightCurveModel:
                     kernel = terms.Matern32Term(log_sigma=np.log(self.pl_params[inst]['GP_sigma']),
                                                 log_rho=np.log(self.pl_params[inst]['GP_rho']))
                 else:
-                    raise ValueError('Bad GP kernel.')
+                    raise ValueError('Invalid GP kernel.')
 
                 # Use the GP to make a prediction based on the observations
                 # and current light curve model.
@@ -444,6 +455,54 @@ def simple_transit(t, pl_params, ld, ld_model='quadratic'):
     params.u = ld
 
     m = batman.TransitModel(params, t)
+    flux = m.light_curve(params)
+
+    return flux
+
+
+def asymmetric_transit(t, pl_params, ld, ld_model='quadratic'):
+    """Calculate an asymmetric transit model using catwoman.
+
+    Parameters
+    ----------
+    t : ndarray(float)
+        Time stamps at which to calculate the light curve.
+    pl_params : dict
+        Dictionary of input parameters. Must contain the following:
+        t0, time of mid-transit
+        per, planet orbital period in days
+        rp, planet-to-star radius ratio for top semi-circle
+        rp2, planet-to-star radius ratio for bottom semi-circle
+        a, planet semi-major axis in units of stellar radii
+        inc, planet orbital inclination in degrees
+        ecc, planet orbital eccentricity
+        w, planet argument of periastron
+        phi, angle of rotation of top semi-circle (e.g., 90deg yields side-by-side geometry).
+    ld : list(float)
+        List of limb darkening parameters.
+    ld_model : str
+        BATMAN limb darkening identifier.
+
+    Returns
+    -------
+    flux : ndarray(float)
+        Model light curve.
+    """
+
+    params = batman.TransitParams()
+    params.t0 = pl_params['t0']
+    params.per = pl_params['per']
+    params.rp = pl_params['rp']
+    params.rp2 = pl_params['rp2']
+    params.a = pl_params['a']
+    params.inc = pl_params['inc']
+    params.ecc = pl_params['ecc']
+    params.w = pl_params['w']
+    params.limb_dark = ld_model
+    params.u = ld
+    params.phi = pl_params['phi']
+
+    m = catwoman.TransitModel(params, t, fac=5e-3)  # fac arbitrarily set to avoid convergence issues.
     flux = m.light_curve(params)
 
     return flux
