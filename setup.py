@@ -15,6 +15,7 @@ setup(name='exouprf',
       package_data={'': ['README.md', 'LICENSE']},
       install_requires=['batman-package', 'celerite', 'corner', 'dynesty',
                         'emcee', 'h5py', 'matplotlib', 'numpy', 'scipy'],
+      extras_require={'catwoman': ['exouprf', 'catwoman']},
       classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Science/Research',

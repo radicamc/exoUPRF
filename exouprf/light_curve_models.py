@@ -17,6 +17,12 @@ import warnings
 import exouprf.utils as utils
 from exouprf.utils import fancyprint
 
+try:
+    import catwoman
+except ModuleNotFoundError:
+    fancyprint('catwoman not installed. Asymmetric transit modelling is unavailable.',
+               msg_type='WARNING')
+
 
 class LightCurveModel:
     """Secondary exoUPRF class. Creates light curve models given a set of input parameters and
@@ -245,9 +251,14 @@ class LightCurveModel:
 
                 # === Do the Light Curve Calculation ===
                 if lc_model_type[inst][pl] == 'transit':
-                    # Calculate a basic transit model using the input parameters.
-                    pl_flux = simple_transit(self.t[inst], self.pl_params[inst][pl], ld_params,
-                                             ld_model=ld_model)
+                    if 'rp2' not in self.pl_params[inst][pl]:
+                        # Calculate a basic transit model using the input parameters.
+                        pl_flux = simple_transit(self.t[inst], self.pl_params[inst][pl], ld_params,
+                                                 ld_model=ld_model)
+                    else:
+                        # Calculate an asymmetric transit model using the input parameters.
+                        pl_flux = asymmetric_transit(self.t[inst], self.pl_params[inst][pl],
+                                                     ld_params, ld_model=ld_model)
                 elif lc_model_type[inst][pl] == 'eclipse':
                     # Calculate a basic eclipse model using the input parameters.
                     pl_flux = simple_eclipse(self.t[inst], self.pl_params[inst][pl])
@@ -369,7 +380,7 @@ class LightCurveModel:
                     kernel = terms.Matern32Term(log_sigma=np.log(self.pl_params[inst]['GP_sigma']),
                                                 log_rho=np.log(self.pl_params[inst]['GP_rho']))
                 else:
-                    raise ValueError('Bad GP kernel.')
+                    raise ValueError('Invalid GP kernel.')
 
                 # Use the GP to make a prediction based on the observations
                 # and current light curve model.
