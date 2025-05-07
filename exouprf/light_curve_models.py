@@ -131,6 +131,11 @@ class LightCurveModel:
                 for inst in self.multiplicity.keys():
                     if inst in param_split:
                         self.pl_params[inst][prop] = input_parameters[param]['value']
+            # Other parametric astrophysical or instrumental systematics (ramps, spots, etc.).
+            elif prop[:4] in ['ramp', 'spot', 'curv']:
+                for inst in self.multiplicity.keys():
+                    if inst in param_split:
+                        self.pl_params[inst][prop] = input_parameters[param]['value']
             # GP systematics -- property of instrument.
             elif prop == 'GP':
                 for inst in self.multiplicity.keys():
@@ -178,10 +183,14 @@ class LightCurveModel:
             self.flux_decomposed[inst] = {}
             self.flux_decomposed[inst]['pl'] = {}
             self.flux[inst] = np.ones_like(self.t[inst])
-            use_lm, use_gp = False, False
+            # Systematics models.
+            use_lm, use_gp, use_parametric = False, False, False
+            # Specific parametric models.
+            use_curv, use_ramp, use_spot = False, False, False
 
             # Detect and format linear model and GP parameters.
             self.flux_decomposed[inst]['lm'] = None
+            self.flux_decomposed[inst]['parametric'] = None
             self.flux_decomposed[inst]['gp'] = None
             # Unpack LM multipliers.
             thetas, gp_params = [], []
@@ -193,6 +202,21 @@ class LightCurveModel:
                         raise ValueError('No regressors passed for instrument {}'.format(inst))
                     thetas.append(self.pl_params[inst][param])
                     use_lm = True
+                # Note if parametric systematics models are to be used.
+                elif param[:4] in ['curv', 'ramp', 'spot']:
+                    if param[:4] == 'curv':
+                        assert 'curv-amp' in self.pl_params[inst].keys()
+                        assert 'curv-pos' in self.pl_params[inst].keys()
+                        use_parametric, use_curv = True, True
+                    if param[:4] == 'ramp':
+                        assert 'ramp-amp' in self.pl_params[inst].keys()
+                        assert 'ramp-tmsc' in self.pl_params[inst].keys()
+                        use_parametric, use_ramp = True, True
+                    if param[:4] == 'spot':
+                        assert 'spot-amp' in self.pl_params[inst].keys()
+                        assert 'spot-pos' in self.pl_params[inst].keys()
+                        assert 'spot-dur' in self.pl_params[inst].keys()
+                        use_parametric, use_spot = True, True
                 # Note if a GP is to be used.
                 elif param[:2] == 'GP':
                     # Ensure that there are appropriate regressors.
@@ -280,6 +304,40 @@ class LightCurveModel:
 
                 # Add the total LM model to the total light curve model.
                 self.flux[inst] += self.flux_decomposed[inst]['lm']['total']
+
+            # === Parametric Systematics ===
+            if use_parametric is True:
+                self.flux_decomposed[inst]['parametric'] = {}
+                self.flux_decomposed[inst]['parametric']['total'] = np.zeros_like(self.t[inst])
+                # Baseline curvature.
+                if use_curv is True:
+                    if not self.silent:
+                        fancyprint('Curvature model detected for instrument {}.'.format(inst))
+                    t0 = self.pl_params[inst][pl]['t0']
+                    cuvrature = quad_curvature(self.t[inst], t0, self.pl_params[inst]['curv-amp'],
+                                               self.pl_params[inst]['curv-off'])
+                    self.flux_decomposed[inst]['parametric']['curv'] = curvature
+                    self.flux_decomposed[inst]['parametric']['total'] += curvature
+                # Ramp.
+                if use_ramp is True:
+                    if not self.silent:
+                        fancyprint('Ramp model detected for instrument {}.'.format(inst))
+                    ramp = exp_ramp(self.t[inst], self.pl_params[inst]['ramp-amp'],
+                                    self.pl_params[inst]['ramp-tmsc'])
+                    self.flux_decomposed[inst]['parametric']['ramp'] = ramp
+                    self.flux_decomposed[inst]['parametric']['total'] += ramp
+                # Spot crossing.
+                if use_spot is True:
+                    if not self.silent:
+                        fancyprint('Spot model detected for instrument {}.'.format(inst))
+                    spot = spot_crossing(self.t[inst], self.pl_params[inst]['spot-amp'],
+                                         self.pl_params[inst]['spot-pos'],
+                                         self.pl_params[inst]['spot-dur'])
+                    self.flux_decomposed[inst]['parametric']['spot'] = spot
+                    self.flux_decomposed[inst]['parametric']['total'] += spot
+
+                # Add the total parametric model to the total light curve model.
+                self.flux[inst] += self.flux_decomposed[inst]['parametric']['total']
 
             # === GP Models ===
             # Acceptable GP kernels.
@@ -459,163 +517,30 @@ def simple_transit(t, pl_params, ld, ld_model='quadratic'):
 
     return flux
 
-
-def asymmetric_transit(t, pl_params, ld, ld_model='quadratic'):
-    """Calculate an asymmetric transit model using catwoman.
-
-    Parameters
-    ----------
-    t : ndarray(float)
-        Time stamps at which to calculate the light curve.
-    pl_params : dict
-        Dictionary of input parameters. Must contain the following:
-        t0, time of mid-transit
-        per, planet orbital period in days
-        rp, planet-to-star radius ratio for top semi-circle
-        rp2, planet-to-star radius ratio for bottom semi-circle
-        a, planet semi-major axis in units of stellar radii
-        inc, planet orbital inclination in degrees
-        ecc, planet orbital eccentricity
-        w, planet argument of periastron
-        phi, angle of rotation of top semi-circle (e.g., 90deg yields side-by-side geometry).
-    ld : list(float)
-        List of limb darkening parameters.
-    ld_model : str
-        BATMAN limb darkening identifier.
-
-    Returns
-    -------
-    flux : ndarray(float)
-        Model light curve.
+def exp_ramp(t, ramp_amp, ramp_tmsc):
+    """Calculate an exponential ramp.
     """
-
-    params = batman.TransitParams()
-    params.t0 = pl_params['t0']
-    params.per = pl_params['per']
-    params.rp = pl_params['rp']
-    params.rp2 = pl_params['rp2']
-    params.a = pl_params['a']
-    params.inc = pl_params['inc']
-    params.ecc = pl_params['ecc']
-    params.w = pl_params['w']
-    params.limb_dark = ld_model
-    params.u = ld
-    params.phi = pl_params['phi']
-
-    m = catwoman.TransitModel(params, t, fac=5e-3)  # fac arbitrarily set to avoid convergence issues.
-    flux = m.light_curve(params)
-
-    return flux
-
-
-def transit_exp_ramp(t, pl_params, ld, ld_model='quadratic'):
-    """Calculate a transit model with an exponential ramp.
-
-        Parameters
-        ----------
-        t : ndarray(float)
-            Time stamps at which to calculate the light curve.
-        pl_params : dict
-            Dictionary of input parameters. Must contain the following:
-            t0, time of mid-transit
-            per, planet orbital period in days
-            rp, planet-to-star radius ratio
-            a, planet semi-major axis in units of stellar radii
-            inc, planet orbital inclination in degrees
-            ecc, planet orbital eccentricity
-            w, planet argument of periastron.
-            ramp-amp, amplitude of the exponential ramp.
-            ramp-tmsc, Decay (or growth) timescale of the exponential ramp.
-        ld : list(float)
-            List of limb darkening parameters.
-        ld_model : str
-            BATMAN limb darkening identifier.
-
-        Returns
-        -------
-        flux : ndarray(float)
-            Model light curve.
-        """
-
-    flux = simple_transit(t, pl_params, ld, ld_model=ld_model)
     tt = (t - np.mean(t))/np.std(t)
-    flux += pl_params['ramp-amp'] * np.exp(pl_params['ramp-tmsc'] * tt)
+    flux = ramp_amp * np.exp(ramp_tmsc * tt)
 
     return flux
 
 
-def transit_quad_curvature(t, pl_params, ld, ld_model='quadratic'):
-    """Calculate a transit model with quadratic curvature in the baseline with variable amplitude
-    and offset from mid-transit.
-
-        Parameters
-        ----------
-        t : ndarray(float)
-            Time stamps at which to calculate the light curve.
-        pl_params : dict
-            Dictionary of input parameters. Must contain the following:
-            t0, time of mid-transit
-            per, planet orbital period in days
-            rp, planet-to-star radius ratio
-            a, planet semi-major axis in units of stellar radii
-            inc, planet orbital inclination in degrees
-            ecc, planet orbital eccentricity
-            w, planet argument of periastron.
-            curv-amp, amplitude of curvature.
-            curv-pos, position of curvature mid-point.
-        ld : list(float)
-            List of limb darkening parameters.
-        ld_model : str
-            BATMAN limb darkening identifier.
-
-        Returns
-        -------
-        flux : ndarray(float)
-            Model light curve.
-        """
-
-    flux = simple_transit(t, pl_params, ld, ld_model=ld_model)
-    offset = pl_params['t0'] - pl_params['curv-off']
-    flux += pl_params['curv-amp'] * (t - offset)**2
-
-    return flux
-
-
-def transit_spot_crossing(t, pl_params, ld, ld_model='quadratic'):
-    """Calculate a transit model with a star spot crossing. The star spot will be modelled as a
-    Gaussian bump in the light curve.
-
-    Parameters
-    ----------
-    t : ndarray(float)
-        Time stamps at which to calculate the light curve.
-    pl_params : dict
-        Dictionary of input parameters. Must contain the following:
-        t0, time of mid-transit
-        per, planet orbital period in days
-        rp, planet-to-star radius ratio
-        a, planet semi-major axis in units of stellar radii
-        inc, planet orbital inclination in degrees
-        ecc, planet orbital eccentricity
-        w, planet argument of periastron.
-        spot-amp, amplitude of spot crossing bump.
-        spot-pos, position of spot crossing bump.
-        spot-dur, duration of spot crossing bump.
-    ld : list(float)
-        List of limb darkening parameters.
-    ld_model : str
-        BATMAN limb darkening identifier.
-
-    Returns
-    -------
-    flux : ndarray(float)
-        Model light curve.
+def quad_curvature(t, t0, curv_amp, curv_off):
+    """Calculate quadratic curvature with a variable amplitude and offset from mid-transit.
     """
+    offset = t0 - curv_off
+    flux = curv_amp * (t - offset)**2
 
+    return flux
+
+
+def spot_crossing(t, spot_amp, spot_pos, spot_dur):
+    """Calculate a Gaussian spot model.
+    """
     def gauss(x, amp, mu, sigma):
         return amp * np.exp(-0.5 * (x - mu) ** 2 / sigma ** 2)
 
-    flux = simple_transit(t, pl_params, ld, ld_model=ld_model)
-    flux += gauss(t, pl_params['spot-amp'], pl_params['spot-pos'], pl_params['spot-dur'])
+    flux = gauss(t, spot_amp, spot_pos, spot_dur)
 
     return flux
