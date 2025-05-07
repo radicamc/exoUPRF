@@ -314,7 +314,7 @@ class LightCurveModel:
                     if not self.silent:
                         fancyprint('Curvature model detected for instrument {}.'.format(inst))
                     t0 = self.pl_params[inst][pl]['t0']
-                    cuvrature = quad_curvature(self.t[inst], t0, self.pl_params[inst]['curv-amp'],
+                    curvature = quad_curvature(self.t[inst], t0, self.pl_params[inst]['curv-amp'],
                                                self.pl_params[inst]['curv-off'])
                     self.flux_decomposed[inst]['parametric']['curv'] = curvature
                     self.flux_decomposed[inst]['parametric']['total'] += curvature
@@ -516,6 +516,55 @@ def simple_transit(t, pl_params, ld, ld_model='quadratic'):
     flux = m.light_curve(params)
 
     return flux
+
+
+def asymmetric_transit(t, pl_params, ld, ld_model='quadratic'):
+    """Calculate an asymmetric transit model using catwoman.
+
+    Parameters
+    ----------
+    t : ndarray(float)
+        Time stamps at which to calculate the light curve.
+    pl_params : dict
+        Dictionary of input parameters. Must contain the following:
+        t0, time of mid-transit
+        per, planet orbital period in days
+        rp, planet-to-star radius ratio for top semi-circle
+        rp2, planet-to-star radius ratio for bottom semi-circle
+        a, planet semi-major axis in units of stellar radii
+        inc, planet orbital inclination in degrees
+        ecc, planet orbital eccentricity
+        w, planet argument of periastron
+        phi, angle of rotation of top semi-circle (e.g., 90deg yields side-by-side geometry).
+    ld : list(float)
+        List of limb darkening parameters.
+    ld_model : str
+        BATMAN limb darkening identifier.
+
+    Returns
+    -------
+    flux : ndarray(float)
+        Model light curve.
+    """
+
+    params = batman.TransitParams()
+    params.t0 = pl_params['t0']
+    params.per = pl_params['per']
+    params.rp = pl_params['rp']
+    params.rp2 = pl_params['rp2']
+    params.a = pl_params['a']
+    params.inc = pl_params['inc']
+    params.ecc = pl_params['ecc']
+    params.w = pl_params['w']
+    params.limb_dark = ld_model
+    params.u = ld
+    params.phi = pl_params['phi']
+
+    m = catwoman.TransitModel(params, t, fac=5e-3)  # fac arbitrarily set to avoid convergence issues.
+    flux = m.light_curve(params)
+
+    return flux
+
 
 def exp_ramp(t, ramp_amp, ramp_tmsc):
     """Calculate an exponential ramp.
