@@ -206,7 +206,7 @@ class LightCurveModel:
                 elif param[:4] in ['curv', 'ramp', 'spot']:
                     if param[:4] == 'curv':
                         assert 'curv-amp' in self.pl_params[inst].keys()
-                        assert 'curv-pos' in self.pl_params[inst].keys()
+                        assert 'curv-off' in self.pl_params[inst].keys()
                         use_parametric, use_curv = True, True
                     if param[:4] == 'ramp':
                         assert 'ramp-amp' in self.pl_params[inst].keys()
