@@ -112,8 +112,9 @@ class Dataset:
                 fancyprint('force_redo=True, existing file {} will be overwritten.'
                            .format(output_file), msg_type='WARNING')
             else:
-                raise ValueError('Output file already {} exists and force_redo=False.'
-                                 .format(output_file))
+                fancyprint('Output file {} already exists and force_redo=False. Existing outputs '
+                           'will not be overwritten.'.format(output_file))
+                return
 
         # For MCMC sampling with emcee.
         if sampler == 'MCMC':
@@ -188,6 +189,8 @@ class Dataset:
 
         else:
             raise ValueError('Unrecognized sampler, {}'.format(sampler))
+
+        return
 
     def get_param_dict_from_fit(self, method='median', mcmc_burnin=None, mcmc_thin=15,
                                 drop_chains=None):
