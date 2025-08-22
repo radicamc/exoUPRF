@@ -94,7 +94,7 @@ Currently supported parametric systematics models and their necessary parameters
 +==================+=======================================================================+
 | ``ramp-amp``     | Amplitude of the exponential ramp.                                    |
 +------------------+-----------------------------------------------------------------------+
-| ``ramp-tmcs``    | Ramp e-folding timescale (values < 0 indicate decay; days)            |
+| ``ramp-tmsc``    | Ramp e-folding timescale (values < 0 indicate decay; days)            |
 +------------------+-----------------------------------------------------------------------+
 
 
