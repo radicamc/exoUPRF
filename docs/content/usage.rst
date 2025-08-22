@@ -30,38 +30,6 @@ call: ``transit``
 
 Additionally, transit models include limb darkening. Supported limb darkening models are: ``linear``, ``quadratic``, ``quadratic-kipping``, ``square-root``, or ``nonlinear``.
 
-Transit Model with a Spot Crossing
-""""""""""""""""""""""""""""""""""
-call: ``transit_spot_crossing``
-
-A transit model which includes a Gaussian "bump" to include a potential star spot crossing.
-In addition to the simple transit parameters listed above, the transit with spot crossing model has three extras:
-
-+------------------+-----------------------------------------------------------------------+
-| Parameter Name   |           Description                                                 |
-+==================+=======================================================================+
-| ``spot-amp``     | Amplitude of the Gaussian bump.                                       |
-+------------------+-----------------------------------------------------------------------+
-| ``spot-pos``     | Position of the Gaussian bump (days).                                 |
-+------------------+-----------------------------------------------------------------------+
-| ``spot-dur``     | Width of the Gaussian bump (days).                                    |
-+------------------+-----------------------------------------------------------------------+
-
-Transit Model with Quadratic Baseline Curvature
-"""""""""""""""""""""""""""""""""""""""""""""""
-call: ``transit_quad_curvature``
-
-A transit model which includes quadratic curvature (with a variable center of curvature) in the baseline.
-In addition to the simple transit parameters listed above, the transit with quadratic curvature model has two extras:
-
-+------------------+-----------------------------------------------------------------------+
-| Parameter Name   |           Description                                                 |
-+==================+=======================================================================+
-| ``curv-amp``     | Amplitude of the curvature.                                           |
-+------------------+-----------------------------------------------------------------------+
-| ``curv-pos``     | Position center of curvature, relative to mid-transit (days).         |
-+------------------+-----------------------------------------------------------------------+
-
 Simple Eclipse
 """"""""""""""
 call: ``eclipse``
@@ -78,7 +46,7 @@ In addition to the simple transit parameters listed above, the eclipse model has
 
 Built-in Systematics Models
 ---------------------------
-Systematics are handled in exoUPRF via two methods: linear models or Gaussian processes.
+Systematics are handled in exoUPRF via three methods: linear models, parametric model and/or Gaussian processes.
 
 Linear Models
 """""""""""""
@@ -90,6 +58,45 @@ A user-defined vector is linearlly scaled to attempt to remove systematic noise 
     \text{light curve} = \text{transit} + \sum_{i=1}^N X_i\theta_i,
 
 where :math:`\theta_i` is a set of :math:`N` user-defined systematics vectors, and :math:`X_i` is the set of scalars multiplying the systematics vectors.
+
+Parametric Systematics Models
+"""""""""""""""""""""""""""""
+A parametric systematics model is used to correct for a source of systematic noise with a well-defined funcational form.
+Currently supported parametric systematics models and their necessary parameters are:
+
+**Spot Crossing** (modelled as a Gaussian "bump")
+
++------------------+-----------------------------------------------------------------------+
+| Parameter Name   |           Description                                                 |
++==================+=======================================================================+
+| ``spot-amp``     | Amplitude of the Gaussian bump.                                       |
++------------------+-----------------------------------------------------------------------+
+| ``spot-pos``     | Position of the Gaussian bump (days).                                 |
++------------------+-----------------------------------------------------------------------+
+| ``spot-dur``     | Width of the Gaussian bump (days).                                    |
++------------------+-----------------------------------------------------------------------+
+
+**Baseline Curvature** (assumed to be quadratic)
+
++------------------+-----------------------------------------------------------------------+
+| Parameter Name   |           Description                                                 |
++==================+=======================================================================+
+| ``curv-amp``     | Amplitude of the curvature.                                           |
++------------------+-----------------------------------------------------------------------+
+| ``curv-pos``     | Position center of curvature, relative to mid-transit (days).         |
++------------------+-----------------------------------------------------------------------+
+
+
+**Exponential Ramp** (Assumed to be at the start of the observations)
+
++------------------+-----------------------------------------------------------------------+
+| Parameter Name   |           Description                                                 |
++==================+=======================================================================+
+| ``ramp-amp``     | Amplitude of the exponential ramp.                                    |
++------------------+-----------------------------------------------------------------------+
+| ``ramp-tmcs``    | Ramp e-folding timescale (values < 0 indicate decay; days)            |
++------------------+-----------------------------------------------------------------------+
+
 
 Gaussian Processes
 """"""""""""""""""
