@@ -4,7 +4,7 @@
 from setuptools import setup
 
 setup(name='exouprf',
-      version='1.0.3',
+      version='1.1.0',
       license='MIT',
       author='Michael Radica',
       author_email='radicamc@uchicago.edu',
@@ -15,6 +15,7 @@ setup(name='exouprf',
       package_data={'': ['README.md', 'LICENSE']},
       install_requires=['batman-package', 'celerite', 'corner', 'dynesty',
                         'emcee', 'h5py', 'matplotlib', 'numpy', 'scipy'],
+      extras_require={'catwoman': ['exouprf', 'catwoman']},
       classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Science/Research',

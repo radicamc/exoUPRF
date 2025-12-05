@@ -9,6 +9,7 @@ Additional Citations
 If you use Gaussian Processes please cite `celerite <https://ui.adsabs.harvard.edu/abs/2017AJ....154..220F/abstract>`_.
 If you use MCMC sampling, you should cite `emcee <https://ui.adsabs.harvard.edu/abs/2013PASP..125..306F/abstract>`_,
 and `dynesty <https://ui.adsabs.harvard.edu/abs/2020MNRAS.493.3132S/abstract>`_ if you use nested sampling.
+If you use the asymmetric transit fitting functionalities, cite `catwoman <https://ui.adsabs.harvard.edu/abs/2020JOSS....5.2382J/abstract>`_.
 
 Lastly, you should cite the libraries upon which this code is built, namely:
 `batman <https://ui.adsabs.harvard.edu/abs/2015PASP..127.1161K/abstract>`_,
