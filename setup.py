@@ -4,7 +4,7 @@
 from setuptools import setup
 
 setup(name='exouprf',
-      version='1.0.3',
+      version='1.1.0',
       license='MIT',
       author='Michael Radica',
       author_email='radicamc@uchicago.edu',

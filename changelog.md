@@ -1,11 +1,12 @@
 # Changelog
 All notable changes to this project will be documented in this file.
 
-### [X.X.X] -- 
+### [1.1.0] -- 2025-12-05
 #### Added
+- Release to coincide with exoTEDRF v2.4.0.
 - Option to fit for asymmetric transits with catwoman. 
-- Parametric systeatics models like exponential ramps have been moved to their own category of fit parameter.
-- Option to fit for multiple T0 values for a single planet in different instruments. 
+- Parametric systematics models like exponential ramps have been moved to their own category of fit parameter.
+- Option to fit for multiple T0 values for a single planet in different instruments.
 
 ### [1.0.3] -- 2025-05-01
 #### Added
