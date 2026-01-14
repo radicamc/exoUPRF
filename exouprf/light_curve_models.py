@@ -63,7 +63,7 @@ class LightCurveModel:
         self.flux_decomposed = None
         self.flux = None
         self.gp_kernel = None
-        self.nspot = 0
+        self.nspot = {}
         self.flux_decomposed = {}
         self.flux = {}
         self.gp = {}
@@ -137,12 +137,14 @@ class LightCurveModel:
                 for inst in self.multiplicity.keys():
                     if inst in param_split:
                         self.pl_params[inst][prop] = input_parameters[param]['value']
-                if prop[:4] == 'spot':  # Count number of spots.
-                    self.nspot = 1
-                    if prop[4] != '-':
-                        spot_no = int(prop[4])
-                        if spot_no > self.nspot:
-                            self.nspot = spot_no
+                        if prop[:4] == 'spot':  # Count number of spots for each instrument.
+                            if inst not in self.nspot.keys():
+                                self.nspot[inst] = 1
+                            else:
+                                if prop[4] != '-':
+                                    spot_no = int(prop[4])
+                                    if spot_no > self.nspot[inst]:
+                                        self.nspot[inst] = spot_no
 
             # GP systematics -- property of instrument.
             elif prop == 'GP':
@@ -353,8 +355,8 @@ class LightCurveModel:
                 if use_spot is True:
                     if not self.silent:
                         fancyprint('Spot model detected for instrument {}.'.format(inst))
-                        fancyprint('Modelling {} spots.'.format(self.nspot))
-                    for s in range(1, self.nspot+1):
+                        fancyprint('Modelling {} spots.'.format(self.nspot[inst]))
+                    for s in range(1, self.nspot[inst]+1):
                         if s == 1:
                             spot = spot_crossing(self.t[inst], self.pl_params[inst]['spot-amp'],
                                                  self.pl_params[inst]['spot-pos'],
