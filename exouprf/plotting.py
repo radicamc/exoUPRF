@@ -333,7 +333,7 @@ def make_lightcurve_plot(t, data, model, scatter, errors=None, nfit=None, outpdf
 
 
 def plot_mcmc_chains(filename, labels=None, log_params=None, highlight_chains=None,
-                     drop_chains=None):
+                     drop_chains=None, outpdf=None):
     """Plot MCMC chains.
 
     Parameters
@@ -348,6 +348,8 @@ def plot_mcmc_chains(filename, labels=None, log_params=None, highlight_chains=No
         Indices of chains to highlight.
     drop_chains : list(int), None
         Indices of chains to drop.
+    outpdf : str, None
+        File to which to save plot.
     """
 
     # Get MCMC chains.
@@ -384,4 +386,13 @@ def plot_mcmc_chains(filename, labels=None, log_params=None, highlight_chains=No
                 ax.plot(samples[:, j, i], c='red', alpha=0.5)
 
     axes[-1].set_xlabel('Step Number')
-    plt.show()
+
+    if outpdf is not None:
+        if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
+            outpdf.savefig(fig)
+        else:
+            fig.savefig(outpdf)
+        fig.clear()
+        plt.close(fig)
+    else:
+        plt.show()
