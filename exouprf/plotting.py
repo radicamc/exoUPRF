@@ -17,7 +17,8 @@ import matplotlib.ticker as mticker
 import numpy as np
 
 
-def make_noise_binning_plot(residuals, integration_time=None, labels=None, just_calculate=False):
+def make_noise_binning_plot(residuals, integration_time=None, labels=None, just_calculate=False,
+                            outpdf=None):
     """Make a 'Not an Allan Variance Plot" (TM) for a given set of residuals.
     Original routine by Hannah Wakeford, adapted by MCR.
 
@@ -101,7 +102,15 @@ def make_noise_binning_plot(residuals, integration_time=None, labels=None, just_
             ax2.yaxis.set_major_formatter(mticker.ScalarFormatter())
             ax2.yaxis.set_minor_formatter(mticker.ScalarFormatter())
 
-        plt.show()
+        if outpdf is not None:
+            if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
+                outpdf.savefig(figure)
+            else:
+                figure.savefig(outpdf)
+            figure.clear()
+            plt.close(figure)
+        else:
+            plt.show()
 
         return
     else:
