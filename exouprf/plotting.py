@@ -104,11 +104,11 @@ def make_noise_binning_plot(residuals, integration_time=None, labels=None, just_
 
         if outpdf is not None:
             if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
-                outpdf.savefig(figure)
+                outpdf.savefig(f)
             else:
-                figure.savefig(outpdf)
-            figure.clear()
-            plt.close(figure)
+                f.savefig(outpdf)
+            f.clear()
+            plt.close(f)
         else:
             plt.show()
 
