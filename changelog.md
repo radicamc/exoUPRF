@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 ### [1.1.1] -- 2026-02-23
 #### Added
 - Release to coincide with exoTEDRF v2.4.1.
+- Refactor calculation of light curve model.
 - Improvements to star spot crossing modelling. 
 - Allow for saving and restarting of fits. 
 
