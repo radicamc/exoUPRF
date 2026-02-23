@@ -74,6 +74,7 @@ class Dataset:
         self.flux = None
         self.output_file = None
         self.custom_lc_functions = custom_lc_functions
+        self.mod_init = None
 
     def fit(self, output_file, sampler='MCMC', mcmc_start=None, mcmc_ncores=1, mcmc_steps=10000,
             continue_mcmc=False, dynesty_args=None, force_redo=False, resume_dynesty=False,
@@ -121,34 +122,59 @@ class Dataset:
                            'will not be overwritten.'.format(output_file))
                 return
 
-        # For MCMC sampling with emcee.
-        if sampler == 'MCMC':
-            # For each parameter, get the prior function to be used based on
-            # the indicated prior distribution.
-            for param in self.pl_params:
-                dist = self.pl_params[param]['distribution']
-                if dist == 'fixed':
-                    self.pl_params[param]['function'] = None
-                elif dist == 'uniform':
+        # For each parameter, get the prior transform/function to be used based on
+        # the indicated prior distribution.
+        this_param = copy.deepcopy(self.pl_params)
+        ndim = 0
+        for param in self.pl_params:
+            dist = self.pl_params[param]['distribution']
+            if dist == 'fixed':
+                self.pl_params[param]['function'] = None
+                ndim -= 1
+            elif dist == 'uniform':
+                if sampler == 'MCMC':
                     self.pl_params[param]['function'] = logprior_uniform
-                elif dist == 'loguniform':
+                else:
+                    self.pl_params[param]['function'] = transform_uniform
+                this_param[param]['value'] = np.mean(self.pl_params[param]['value'])
+            elif dist == 'loguniform':
+                if sampler == 'MCMC':
                     self.pl_params[param]['function'] = logprior_loguniform
-                elif dist == 'normal':
+                else:
+                    self.pl_params[param]['function'] = transform_loguniform
+                this_param[param]['value'] = np.mean(self.pl_params[param]['value'])
+            elif dist == 'normal':
+                if sampler == 'MCMC':
                     self.pl_params[param]['function'] = logprior_normal
-                elif dist == 'truncated_normal':
+                else:
+                    self.pl_params[param]['function'] = transform_normal
+                this_param[param]['value'] = self.pl_params[param]['value'][0]
+            elif dist == 'truncated_normal':
+                if sampler == 'MCMC':
                     self.pl_params[param]['function'] = logprior_truncatednormal
                 else:
-                    raise ValueError('Unknown distribution {0} for parameter {1}'
-                                     .format(dist, param))
+                    self.pl_params[param]['function'] = transform_truncatednormal
+                this_param[param]['value'] = self.pl_params[param]['value'][0]
+            else:
+                raise ValueError('Unknown distribution {0} for parameter {1}'.format(dist, param))
+            ndim += 1
 
+        # Initialize the model outside of the sampler.
+        self.mod_init = LightCurveModel(this_param, self.t,
+                                        linear_regressors=self.linear_regressors,
+                                        observations=self.observations, silent=True,
+                                        gp_regressors=self.gp_regressors, ld_model=self.ld_model,
+                                        lc_model_type=self.lc_model,
+                                        lc_model_functions=self.custom_lc_functions)
+
+        # For MCMC sampling with emcee.
+        if sampler == 'MCMC':
             if continue_mcmc is False:
                 msg = 'Starting positions must be provided for MCMC sampling.'
                 assert mcmc_start is not None, msg
 
             # Arguments for the log probability function call.
-            log_prob_args = (self.pl_params, self.t, self.observations, self.lc_model,
-                             self.linear_regressors, self.gp_regressors, self.ld_model,
-                             self.custom_lc_functions)
+            log_prob_args = (self.pl_params, self.t, self.observations, self.mod_init)
 
             # Initialize and run the emcee sampler.
             mcmc_sampler = fit_emcee(log_probability, initial_pos=mcmc_start, silent=self.silent,
@@ -159,31 +185,8 @@ class Dataset:
 
         # For Nested Sampling with dynesty.
         elif sampler == 'NestedSampling':
-            # For each parameter, get the prior transform function to be used based on the
-            # indicated prior distribution.
-            ndim = 0
-            for param in self.pl_params:
-                dist = self.pl_params[param]['distribution']
-                if dist == 'fixed':
-                    self.pl_params[param]['function'] = None
-                    ndim -= 1
-                elif dist == 'uniform':
-                    self.pl_params[param]['function'] = transform_uniform
-                elif dist == 'loguniform':
-                    self.pl_params[param]['function'] = transform_loguniform
-                elif dist == 'normal':
-                    self.pl_params[param]['function'] = transform_normal
-                elif dist == 'truncated_normal':
-                    self.pl_params[param]['function'] = transform_truncatednormal
-                else:
-                    raise ValueError('Unknown distribution {0} for parameter {1}'
-                                     .format(dist, param))
-                ndim += 1
-
             # Arguments for the log likelihood function call.
-            log_like_args = (self.pl_params, self.t, self.observations, self.lc_model,
-                             self.linear_regressors, self.gp_regressors, self.ld_model,
-                             self.custom_lc_functions)
+            log_like_args = (self.pl_params, self.t, self.observations, self.mod_init)
             ptform_kwargs = {'param_dict': self.pl_params}
 
             nested_sampler = fit_dynesty(set_prior_transform, log_likelihood, ndim,
@@ -508,8 +511,7 @@ def set_prior_transform(theta, param_dict):
     return prior_transform
 
 
-def log_likelihood(theta, param_dict, time, observations, lc_model, linear_regressors=None,
-                   gp_regressors=None, ld_model='quadratic', custom_lc_function=None):
+def log_likelihood(theta, param_dict, time, observations, mod_init):
     """Evaluate the log likelihood for a dataset and a given set of model parameters.
 
     Parameters
@@ -522,16 +524,8 @@ def log_likelihood(theta, param_dict, time, observations, lc_model, linear_regre
         Dictonary of timestamps corresponding to the observations.
     observations : dict
         Dictionary of observations.
-    lc_model : dict
-        Dictionary of light curve model calls.
-    linear_regressors : dict
-        Dictionary of regressors for linear models.
-    gp_regressors : dict
-        Dictionary of regressors for GP models.
-    ld_model : str
-        Limb darkening model to use.
-    custom_lc_function : callable, None
-        Custom light curve function call.
+    mod_init : LightCurveModel
+        Initialized LightCurveModel class.
 
     Returns
     -------
@@ -550,10 +544,8 @@ def log_likelihood(theta, param_dict, time, observations, lc_model, linear_regre
         pcounter += 1
 
     # Evaluate the light curve model for all instruments.
-    thismodel = LightCurveModel(this_param, time, linear_regressors=linear_regressors,
-                                observations=observations, gp_regressors=gp_regressors,
-                                ld_model=ld_model, silent=True)
-    thismodel.compute_lightcurves(lc_model_type=lc_model, lc_model_functions=custom_lc_function)
+    mod_init.update_parameters(this_param)
+    mod_init.compute_lightcurves()
 
     # For each instrument, calculate the likelihood.
     for inst in observations.keys():
@@ -561,15 +553,15 @@ def log_likelihood(theta, param_dict, time, observations, lc_model, linear_regre
         t = time[inst]
         err = this_param['sigma_{}'.format(inst)]['value']
         # If GP is used, evaluate log likelihood with celerite.
-        if inst in thismodel.gp.keys():
-            mod = thismodel.flux[inst] - thismodel.flux_decomposed[inst]['gp']['total']
+        if inst in mod_init.gp.keys():
+            mod = mod_init.flux[inst] - mod_init.flux_decomposed[inst]['gp']['total']
             if not np.all(np.isfinite(mod)):
                 return -np.inf
-            gp = thismodel.gp[inst]
+            gp = mod_init.gp[inst]
             log_like += gp.log_likelihood(dat - mod, quiet=True)
         # If not, normal Gaussian likelihood.
         else:
-            mod = thismodel.flux[inst]
+            mod = mod_init.flux[inst]
             if not np.all(np.isfinite(mod)):
                 return -np.inf
             log_like -= 0.5 * np.log(2 * np.pi * err**2) * len(t)
@@ -578,8 +570,7 @@ def log_likelihood(theta, param_dict, time, observations, lc_model, linear_regre
     return log_like
 
 
-def log_probability(theta, param_dict, time, observations, lc_model, linear_regressors=None,
-                    gp_regressors=None, ld_model='quadratic', custom_lc_function=None):
+def log_probability(theta, param_dict, time, observations, mod_init):
     """Evaluate the log probability for a dataset and a given set of model parameters.
 
     Parameters
@@ -592,16 +583,8 @@ def log_probability(theta, param_dict, time, observations, lc_model, linear_regr
         Dictonary of timestamps corresponding to the observations.
     observations : dict
         Dictionary of observations.
-    lc_model : dict
-        Dictionary of light curve model calls.
-    linear_regressors : dict
-        Dictionary of regressors for linear models.
-    gp_regressors : dict
-        Dictionary of regressors for GP models.
-    ld_model : str
-        Limb darkening model to use.
-    custom_lc_function : callable, None
-        Custom light curve function call.
+    mod_init : LightCurveModel
+        Initialized LightCurveModel class.
 
     Returns
     -------
@@ -612,8 +595,7 @@ def log_probability(theta, param_dict, time, observations, lc_model, linear_regr
     lp = set_logprior(theta, param_dict)
     if not np.isfinite(lp):
         return -np.inf
-    ll = log_likelihood(theta, param_dict, time, observations, lc_model, linear_regressors,
-                        gp_regressors, ld_model, custom_lc_function)
+    ll = log_likelihood(theta, param_dict, time, observations, mod_init)
     if not np.isfinite(ll):
         return -np.inf
 

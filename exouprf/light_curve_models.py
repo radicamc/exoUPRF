@@ -12,7 +12,6 @@ import batman
 import celerite
 from celerite import terms
 import numpy as np
-import warnings
 
 import exouprf.utils as utils
 from exouprf.utils import fancyprint
@@ -29,8 +28,8 @@ class LightCurveModel:
     light curve model function.
     """
 
-    def __init__(self, input_parameters, t, linear_regressors=None, observations=None,
-                 gp_regressors=None, ld_model='quadratic', silent=False):
+    def __init__(self, input_parameters, t, lc_model_type, linear_regressors=None, observations=None,
+                 gp_regressors=None, ld_model='quadratic', silent=False, lc_model_functions=None):
         """Initialize the Model class.
 
         Parameters
@@ -39,6 +38,11 @@ class LightCurveModel:
             Dictionary of input parameters and values. Should have form {parameter: value}.
         t : dict
             Dictionary of timestamps for each instrument. Should have form {instrument: times}.
+        lc_model_type : dict
+            Dictionary of light curve model types for each instrument and planet. Should have
+            form {inst: {pl: model}}. "transit" and "eclipse" models are supported by default.
+            Custom models are possible, and, in this case, model should be the call to the
+            custom model function.
         linear_regressors : dict
             Dictionary of regressors for linear models. Should have form {instrument: regressors}.
         observations : dict
@@ -51,6 +55,9 @@ class LightCurveModel:
             Limb darkening model identifier.
         silent : bool
             If True, do not print any outputs.
+        lc_model_functions : dict, None
+            If lc_model_type is cutom, dictionary of custom model functiomn calls for each
+            instrument and planet. Should have form {inst: {pl: func_call}}.
         """
 
         # Initialize easy attributes.
@@ -67,6 +74,9 @@ class LightCurveModel:
         self.flux_decomposed = {}
         self.flux = {}
         self.gp = {}
+        self.lc_model_type = lc_model_type
+        self.lc_model_functions = lc_model_functions
+        self.batman_initialized = None
 
         # Unpack the input parameter dictionary into a form more amenable to create models.
         # Go through input params once to get number of different instruments.
@@ -112,93 +122,26 @@ class LightCurveModel:
             for pl in self.multiplicity[inst]:
                 self.pl_params[inst][pl] = {}
 
-        # Populate parameters dictionary from input data.
-        for param in input_parameters.keys():
-            param_split = param.split('_')
-            # First chunk is always parameter key.
-            prop = param_split[0]
-            # Zero point -- property of instrument
-            if prop == 'zero':
-                for inst in self.multiplicity.keys():
-                    if inst in param_split:
-                        self.pl_params[inst][prop] = input_parameters[param]['value']
-            # Error inflation parameter -- property of instrument.
-            elif prop == 'sigma':
-                for inst in self.multiplicity.keys():
-                    if inst in param_split:
-                        self.pl_params[inst][prop] = input_parameters[param]['value']
-            # Linear systematics -- property of instrument.
-            elif prop[:5] == 'theta':
-                for inst in self.multiplicity.keys():
-                    if inst in param_split:
-                        self.pl_params[inst][prop] = input_parameters[param]['value']
-            # Other parametric astrophysical or instrumental systematics (ramps, spots, etc.).
-            elif prop[:4] in ['ramp', 'spot', 'curv']:
-                for inst in self.multiplicity.keys():
-                    if inst in param_split:
-                        self.pl_params[inst][prop] = input_parameters[param]['value']
-                        if prop[:4] == 'spot':  # Count number of spots for each instrument.
-                            if inst not in self.nspot.keys():
-                                self.nspot[inst] = 1
-                            else:
-                                if prop[4] != '-':
-                                    spot_no = int(prop[4])
-                                    if spot_no > self.nspot[inst]:
-                                        self.nspot[inst] = spot_no
-
-            # GP systematics -- property of instrument.
-            elif prop == 'GP':
-                for inst in self.multiplicity.keys():
-                    if inst in param_split:
-                        thisprop = param_split[0] + '_' + param_split[1]
-                        self.pl_params[inst][thisprop] = input_parameters[param]['value']
-            # T0 -- property of planet and can be property of instrument.
-            elif prop == 't0':
-                # If not a property of instrument.
-                if len(param_split) == 2:
-                    for inst in self.multiplicity.keys():
-                        for pl in self.multiplicity[inst]:
-                            if pl in param_split:
-                                self.pl_params[inst][pl][prop] = input_parameters[param]['value']
-                # If property of instrument.
-                else:
-                    for inst in self.multiplicity.keys():
-                        if inst in param_split:
-                            for pl in self.multiplicity[inst]:
-                                if pl in param_split:
-                                    self.pl_params[inst][pl][prop] = input_parameters[param]['value']
-            # Assume everything else is an astrophysical parameter.
-            else:
-                # Add to correct instrument and planet dictionary.
-                for inst in self.multiplicity.keys():
-                    # Orbital parameters are not instrument dependent, except for T0.
-                    orb = ['per', 'a', 'inc', 'ecc', 'w']
-                    lds = ['u1', 'u2', 'u3', 'u4', 'q1', 'q2']
-                    if inst in param_split or prop in orb:
-                        for pl in self.multiplicity[inst]:
-                            if pl in param_split or prop in lds:
-                                self.pl_params[inst][pl][prop] = input_parameters[param]['value']
+        # Now unpack the input parameter dictionary
+        self.update_parameters(input_parameters)
 
         # Convert timestamps to float64 -- avoids issue with batman.
         for inst in self.t.keys():
             self.t[inst] = self.t[inst].astype(np.float64)
 
-    def compute_lightcurves(self, lc_model_type, lc_model_functions=None):
+        # Initialize all models -- important when sampling.
+        self.compute_lightcurves(initialize=True)
+
+    def compute_lightcurves(self, initialize=False):
         """Given a set of input parameters, compute a light curve model.
 
         Parameters
         ----------
-        lc_model_type : dict
-            Dictionary of light curve model types for each instrument and planet. Should have
-            form {inst: {pl: model}}. "transit" and "eclipse" models are supported by default.
-            Custom models are possible, and, in this case, model should be the call to the
-            custom model function.
-        lc_model_functions : dict, None
-            If lc_model_type is cutom, dictionary of custom model functiomn calls for each
-            instrument and planet. Should have form {inst: {pl: func_call}}.
+        initialize : bool
+            If True, just initialize the model.
         """
 
-        if not self.silent:
+        if not self.silent and initialize is False:
             fancyprint('Computing light curves for all instruments.')
 
         # Individually treat each instrument.
@@ -230,17 +173,10 @@ class LightCurveModel:
                 # Note if parametric systematics models are to be used.
                 elif param[:4] in ['curv', 'ramp', 'spot']:
                     if param[:4] == 'curv':
-                        assert 'curv-amp' in self.pl_params[inst].keys()
-                        assert 'curv-off' in self.pl_params[inst].keys()
                         use_parametric, use_curv = True, True
                     if param[:4] == 'ramp':
-                        assert 'ramp-amp' in self.pl_params[inst].keys()
-                        assert 'ramp-tmsc' in self.pl_params[inst].keys()
                         use_parametric, use_ramp = True, True
                     if param[:4] == 'spot':
-                        assert 'spot-amp' in self.pl_params[inst].keys()
-                        assert 'spot-pos' in self.pl_params[inst].keys()
-                        assert 'spot-dur' in self.pl_params[inst].keys()
                         use_parametric, use_spot = True, True
                 # Note if a GP is to be used.
                 elif param[:2] == 'GP':
@@ -275,30 +211,42 @@ class LightCurveModel:
                     ld_model = self.ld_model
 
                 # === Do the Light Curve Calculation ===
-                if lc_model_type[inst][pl] == 'transit':
+                if self.lc_model_type[inst][pl] == 'transit':
                     if 'rp2' not in self.pl_params[inst][pl]:
                         # Calculate a basic transit model using the input parameters.
+                        if initialize is True:
+                            pl_flux, m = simple_transit(self.t[inst], self.pl_params[inst][pl],
+                                                        ld_params, ld_model=ld_model, return_m=True)
+                            self.batman_initialized = m
+                            return
                         pl_flux = simple_transit(self.t[inst], self.pl_params[inst][pl], ld_params,
-                                                 ld_model=ld_model)
+                                                 ld_model=ld_model, m=self.batman_initialized)
                     else:
                         # Calculate an asymmetric transit model using the input parameters.
+                        if initialize is True:
+                            pl_flux, m = asymmetric_transit(self.t[inst], self.pl_params[inst][pl],
+                                                            ld_params, ld_model=ld_model,
+                                                            return_m=True)
+                            self.batman_initialized = m
+                            return
                         pl_flux = asymmetric_transit(self.t[inst], self.pl_params[inst][pl],
                                                      ld_params, ld_model=ld_model)
-                elif lc_model_type[inst][pl] == 'eclipse':
+                elif self.lc_model_type[inst][pl] == 'eclipse':
                     # Calculate a basic eclipse model using the input parameters.
+                    if initialize is True:
+                        pl_flux, m = simple_eclipse(self.t[inst], self.pl_params[inst][pl],
+                                                    return_m=True)
+                        self.batman_initialized = m
+                        return
                     pl_flux = simple_eclipse(self.t[inst], self.pl_params[inst][pl])
-                elif lc_model_type[inst][pl] == 'custom-transit':
+                elif self.lc_model_type[inst][pl] == 'custom':
                     # For custom transit models.
-                    custom_call = lc_model_functions[inst][pl]
+                    custom_call = self.lc_model_functions[inst][pl]
                     pl_flux = custom_call(self.t[inst], self.pl_params[inst][pl], ld_params,
                                           ld_model=ld_model)
-                elif lc_model_type[inst][pl] == 'custom-eclipse':
-                    # For custom eclipse models.
-                    custom_call = lc_model_functions[inst][pl]
-                    pl_flux = custom_call(self.t[inst], self.pl_params[inst][pl])
                 else:
                     raise ValueError('Unknown light curve model type {}.'
-                                     .format(lc_model_type[inst][pl]))
+                                     .format(self.lc_model_type[inst][pl]))
                 # Store the model for each planet seperately.
                 self.flux_decomposed[inst]['pl'][pl] = pl_flux
                 # Add contribution of planet to the total astrophysical model.
@@ -463,8 +411,85 @@ class LightCurveModel:
             self.observations[inst]['flux'] = flux_jitter
             self.observations[inst]['flux_err'] = jitter
 
+    def update_parameters(self, input_parameters):
+        """Update the planet parameter dictionary with new values.
 
-def simple_eclipse(t, pl_params):
+        Parameters
+        ----------
+        input_parameters : dict
+            Dictionary of input parameters and values. Should have form {parameter: value}.
+        """
+
+        # Populate parameters dictionary from input data.
+        for param in input_parameters.keys():
+            param_split = param.split('_')
+            # First chunk is always parameter key.
+            prop = param_split[0]
+            # Zero point -- property of instrument
+            if prop == 'zero':
+                for inst in self.multiplicity.keys():
+                    if inst in param_split:
+                        self.pl_params[inst][prop] = input_parameters[param]['value']
+            # Error inflation parameter -- property of instrument.
+            elif prop == 'sigma':
+                for inst in self.multiplicity.keys():
+                    if inst in param_split:
+                        self.pl_params[inst][prop] = input_parameters[param]['value']
+            # Linear systematics -- property of instrument.
+            elif prop[:5] == 'theta':
+                for inst in self.multiplicity.keys():
+                    if inst in param_split:
+                        self.pl_params[inst][prop] = input_parameters[param]['value']
+            # Other parametric astrophysical or instrumental systematics (ramps, spots, etc.).
+            elif prop[:4] in ['ramp', 'spot', 'curv']:
+                for inst in self.multiplicity.keys():
+                    if inst in param_split:
+                        self.pl_params[inst][prop] = input_parameters[param]['value']
+                        if prop[:4] == 'spot':  # Count number of spots for each instrument.
+                            if inst not in self.nspot.keys():
+                                self.nspot[inst] = 1
+                            else:
+                                if prop[4] != '-':
+                                    spot_no = int(prop[4])
+                                    if spot_no > self.nspot[inst]:
+                                        self.nspot[inst] = spot_no
+
+            # GP systematics -- property of instrument.
+            elif prop == 'GP':
+                for inst in self.multiplicity.keys():
+                    if inst in param_split:
+                        thisprop = param_split[0] + '_' + param_split[1]
+                        self.pl_params[inst][thisprop] = input_parameters[param]['value']
+            # T0 -- property of planet and can be property of instrument.
+            elif prop == 't0':
+                # If not a property of instrument.
+                if len(param_split) == 2:
+                    for inst in self.multiplicity.keys():
+                        for pl in self.multiplicity[inst]:
+                            if pl in param_split:
+                                self.pl_params[inst][pl][prop] = input_parameters[param]['value']
+                # If property of instrument.
+                else:
+                    for inst in self.multiplicity.keys():
+                        if inst in param_split:
+                            for pl in self.multiplicity[inst]:
+                                if pl in param_split:
+                                    self.pl_params[inst][pl][prop] = input_parameters[param][
+                                        'value']
+            # Assume everything else is an astrophysical parameter.
+            else:
+                # Add to correct instrument and planet dictionary.
+                for inst in self.multiplicity.keys():
+                    # Orbital parameters are not instrument dependent, except for T0.
+                    orb = ['per', 'a', 'inc', 'ecc', 'w']
+                    lds = ['u1', 'u2', 'u3', 'u4', 'q1', 'q2']
+                    if inst in param_split or prop in orb:
+                        for pl in self.multiplicity[inst]:
+                            if pl in param_split or prop in lds:
+                                self.pl_params[inst][pl][prop] = input_parameters[param]['value']
+
+
+def simple_eclipse(t, pl_params, m=None, return_m=False):
     """Calculate a simple eclipse model.
 
     Parameters
@@ -482,6 +507,10 @@ def simple_eclipse(t, pl_params):
         w, planet argument of periastron
         tsec, time of secondary eclipse
         fp, planet-to-star flux ratio.
+    m : batman.transitmodel
+        Initialized transit model.
+    return_m : bool
+        If True, return the intialized model.
 
     Returns
     -------
@@ -502,13 +531,17 @@ def simple_eclipse(t, pl_params):
     params.t_secondary = pl_params['tsec']
     params.fp = pl_params['fp']
 
-    m = batman.TransitModel(params, t, transittype='secondary')
+    if m is None:
+        m = batman.TransitModel(params, t, transittype='secondary')
     flux = m.light_curve(params)
 
-    return flux
+    if return_m is True:
+        return flux, m
+    else:
+        return flux
 
 
-def simple_transit(t, pl_params, ld, ld_model='quadratic'):
+def simple_transit(t, pl_params, ld, ld_model='quadratic', m=None, return_m=False):
     """Calculate a simple transit model.
 
     Parameters
@@ -528,6 +561,10 @@ def simple_transit(t, pl_params, ld, ld_model='quadratic'):
         List of limb darkening parameters.
     ld_model : str
         BATMAN limb darkening identifier.
+    m : batman.transitmodel
+        Initialized transit model.
+    return_m : bool
+        If True, return the intialized model.
 
     Returns
     -------
@@ -546,13 +583,17 @@ def simple_transit(t, pl_params, ld, ld_model='quadratic'):
     params.limb_dark = ld_model
     params.u = ld
 
-    m = batman.TransitModel(params, t)
+    if m is None:
+        m = batman.TransitModel(params, t)
     flux = m.light_curve(params)
 
-    return flux
+    if return_m is True:
+        return flux, m
+    else:
+        return flux
 
 
-def asymmetric_transit(t, pl_params, ld, ld_model='quadratic'):
+def asymmetric_transit(t, pl_params, ld, ld_model='quadratic', m=None, return_m=False):
     """Calculate an asymmetric transit model using catwoman.
 
     Parameters
@@ -574,6 +615,10 @@ def asymmetric_transit(t, pl_params, ld, ld_model='quadratic'):
         List of limb darkening parameters.
     ld_model : str
         BATMAN limb darkening identifier.
+    m : batman.transitmodel
+        Initialized transit model.
+    return_m : bool
+        If True, return the intialized model.
 
     Returns
     -------
@@ -594,10 +639,14 @@ def asymmetric_transit(t, pl_params, ld, ld_model='quadratic'):
     params.u = ld
     params.phi = pl_params['phi']
 
-    m = catwoman.TransitModel(params, t, fac=5e-3)  # fac arbitrarily set to avoid convergence issues.
+    if m is None:
+        m = catwoman.TransitModel(params, t, fac=5e-3)  # fac arbitrarily set to avoid convergence issues.
     flux = m.light_curve(params)
 
-    return flux
+    if return_m is True:
+        return flux, m
+    else:
+        return flux
 
 
 def exp_ramp(t, ramp_amp, ramp_tmsc):
