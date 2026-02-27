@@ -118,7 +118,7 @@ def make_noise_binning_plot(residuals, integration_time=None, labels=None, just_
 
 
 def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None, outpdf=None,
-                     log_params=None, drop_chains=None):
+                     log_params=None, drop_chains=None, truths=None):
     """Make a corner plot of fitted posterior distributions.
 
     Parameters
@@ -137,6 +137,8 @@ def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None, outp
         Indices of parameters to show on log scale.
     drop_chains : list(int), None
         Indices of chains to drop.
+    truths : list(float), None
+        True parameter values to plot.
     """
 
     # Get chains from HDF5 file and extract best fitting parameters.
@@ -165,7 +167,7 @@ def make_corner_plot(filename, mcmc_burnin=None, mcmc_thin=15, labels=None, outp
             samples[:, i] = np.log10(samples[:, i])
 
     # Make corner plot
-    figure = corner.corner(samples, labels=labels, show_titles=True)
+    figure = corner.corner(samples, labels=labels, show_titles=True, truths=truths)
 
     if outpdf is not None:
         if isinstance(outpdf, matplotlib.backends.backend_pdf.PdfPages):
