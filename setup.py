@@ -13,7 +13,7 @@ setup(name='exouprf',
       url='https://github.com/radicamc/exoUPRF',
       description='Tools for Light Curve Fitting',
       package_data={'': ['README.md', 'LICENSE']},
-      install_requires=['batman-package', 'celerite', 'corner', 'dynesty',
+      install_requires=['batman-package', 'celerite2', 'corner', 'dynesty',
                         'emcee', 'h5py', 'matplotlib', 'numpy', 'scipy'],
       extras_require={'catwoman': ['exouprf', 'catwoman']},
       classifiers=[

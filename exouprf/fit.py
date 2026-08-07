@@ -558,7 +558,7 @@ def log_likelihood(theta, param_dict, time, observations, mod_init):
             if not np.all(np.isfinite(mod)):
                 return -np.inf
             gp = mod_init.gp[inst]
-            log_like += gp.log_likelihood(dat - mod, quiet=True)
+            log_like += gp.log_likelihood(dat - mod)
         # If not, normal Gaussian likelihood.
         else:
             mod = mod_init.flux[inst]

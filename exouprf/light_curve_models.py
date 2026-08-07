@@ -9,8 +9,8 @@ Functions for creating light curve models.
 """
 
 import batman
-import celerite
-from celerite import terms
+import celerite2
+from celerite2 import terms
 import numpy as np
 
 import exouprf.utils as utils
@@ -352,32 +352,28 @@ class LightCurveModel:
                     omega = 2 * np.pi * self.pl_params[inst]['GP_bg']
                     s0 = self.pl_params[inst]['GP_ag']**2 / omega / np.sqrt(2)
                     q = 1/np.sqrt(2)
-                    kernel = terms.SHOTerm(log_S0=np.log(s0), log_omega0=np.log(omega),
-                                           log_Q=np.log(q))
+                    kernel = terms.SHOTerm(S0=s0, w0=omega, Q=q)
                 elif self.gp_kernel == 'SHO':
-                    kernel = terms.SHOTerm(log_S0=np.log(self.pl_params[inst]['GP_S0']),
-                                           log_omega0=np.log(self.pl_params[inst]['GP_omega0']),
-                                           log_Q=np.log(self.pl_params[inst]['GP_Q']))
+                    kernel = terms.SHOTerm(S0=self.pl_params[inst]['GP_S0'],
+                                           w0=self.pl_params[inst]['GP_omega0'],
+                                           Q=self.pl_params[inst]['GP_Q'])
                 elif self.gp_kernel == 'Matern 3/2':
-                    kernel = terms.Matern32Term(log_sigma=np.log(self.pl_params[inst]['GP_sigma']),
-                                                log_rho=np.log(self.pl_params[inst]['GP_rho']))
+                    kernel = terms.Matern32Term(sigma=self.pl_params[inst]['GP_sigma'],
+                                                rho=self.pl_params[inst]['GP_rho'])
                 else:
                     raise ValueError('Invalid GP kernel.')
 
                 # Use the GP to make a prediction based on the observations
                 # and current light curve model.
-                gp = celerite.GP(kernel, mean=0)
+                gp = celerite2.GaussianProcess(kernel, mean=0)
                 try:
-                    gp.compute(self.t[inst], self.pl_params[inst]['sigma'])
+                    gp.compute(self.t[inst], yerr=self.pl_params[inst]['sigma'])
                     thismodel = gp.predict(self.observations[inst]['flux'] - self.flux[inst],
                                            self.t[inst], return_cov=False, return_var=False)
                     self.gp[inst] = gp
-                except Exception as err:
-                    if str(err) == 'failed to factorize or solve matrix':
-                        self.flux_decomposed[inst]['total'] = -np.inf*self.flux[inst]
-                        continue
-                    else:
-                        raise err
+                except celerite2.driver.LinAlgError:
+                    self.flux_decomposed[inst]['total'] = -np.inf*self.flux[inst]
+                    continue
 
                 # Add GP model to light curve model.
                 self.flux_decomposed[inst]['gp']['total'] = thismodel
